@@ -7,6 +7,7 @@ import { resolveLmsRuntimeConfig } from "../lms/config.js";
 import { getCourseAssignment, listCourseAssignments } from "../lms/assignments.js";
 import { listRegularTakenCourses } from "../lms/courses.js";
 import { resolveCourseReference } from "../lms/course-resolver.js";
+import { getDueAssignments, getUnsubmittedAssignments } from "../lms/helpers.js";
 import { getCourseMaterial, listCourseMaterials } from "../lms/materials.js";
 import { getCourseNotice, listCourseNotices } from "../lms/notices.js";
 import { getCourseOnlineWeek, listCourseOnlineWeeks } from "../lms/online.js";
@@ -55,10 +56,12 @@ export function createLmsCommand(getGlobals: () => GlobalOptions): Command {
             notices: ["list", "get"],
             materials: ["list", "get"],
             assignments: ["list", "get"],
-            online: ["list", "get"]
+            online: ["list", "get"],
+            helpers: ["+unsubmitted", "+due-assignments"]
           },
           planned: {
-            attachments: ["download", "download-bulk"]
+            attachments: ["download", "download-bulk"],
+            helpers: ["+digest", "+action-items", "+unread-notices", "+incomplete-online"]
           }
         },
         globals.format
@@ -319,6 +322,55 @@ export function createLmsCommand(getGlobals: () => GlobalOptions): Command {
 
       printData(result, globals.format);
     });
+
+  lms
+    .command("+unsubmitted")
+    .description("Show unsubmitted assignments for one course or the latest-term course set")
+    .option("--course <query>", "course title, course code, or kjkey")
+    .option("--kjkey <kjkey>", "explicit course kjkey")
+    .option("--all-courses", "search across the latest term course set")
+    .action(async (options: { course?: string; kjkey?: string; allCourses?: boolean }) => {
+      const globals = getGlobals();
+      const { client, credentials } = await createLmsClientWithCredentials(globals);
+      const result = await getUnsubmittedAssignments(client, credentials, {
+        ...(options.course ? { course: options.course } : {}),
+        ...(options.kjkey ? { kjkey: options.kjkey } : {}),
+        ...(options.allCourses ? { allCourses: true } : {})
+      });
+
+      printData(result, globals.format);
+    });
+
+  lms
+    .command("+due-assignments")
+    .description("Show assignments due soon for one course or the latest-term course set")
+    .option("--course <query>", "course title, course code, or kjkey")
+    .option("--kjkey <kjkey>", "explicit course kjkey")
+    .option("--all-courses", "search across the latest term course set")
+    .option("--days <days>", "due window in days")
+    .option("--include-submitted", "include already submitted assignments")
+    .action(
+      async (options: {
+        course?: string;
+        kjkey?: string;
+        allCourses?: boolean;
+        days?: string;
+        includeSubmitted?: boolean;
+      }) => {
+        const globals = getGlobals();
+        const { client, credentials } = await createLmsClientWithCredentials(globals);
+        const days = parseOptionalInt(options.days, "days");
+        const result = await getDueAssignments(client, credentials, {
+          ...(options.course ? { course: options.course } : {}),
+          ...(options.kjkey ? { kjkey: options.kjkey } : {}),
+          ...(options.allCourses ? { allCourses: true } : {}),
+          ...(days !== undefined ? { days } : {}),
+          ...(options.includeSubmitted ? { includeSubmitted: true } : {})
+        });
+
+        printData(result, globals.format);
+      }
+    );
 
   lms.addCommand(courses);
   lms.addCommand(notices);
