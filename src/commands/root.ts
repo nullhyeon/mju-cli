@@ -1,6 +1,7 @@
 import { Command } from "commander";
 
 import { APP_DESCRIPTION, APP_NAME, APP_VERSION } from "../app-meta.js";
+import { createAuthCommand } from "./auth.js";
 import { registerGlobalOptions, resolveGlobalOptions } from "./common.js";
 import { createConfigCommand } from "./config.js";
 import { createDoctorCommand } from "./doctor.js";
@@ -19,6 +20,7 @@ export function createRootCommand(): Command {
 
   const getGlobals = () => resolveGlobalOptions(program);
 
+  program.addCommand(createAuthCommand(getGlobals));
   program.addCommand(createConfigCommand(getGlobals));
   program.addCommand(createDoctorCommand(getGlobals));
 
