@@ -8,6 +8,7 @@ import { createDoctorCommand } from "./doctor.js";
 import { createLmsCommand } from "./lms.js";
 import { createMsiCommand } from "./msi.js";
 import { createServiceCommands } from "./services.js";
+import { createUcheckCommand } from "./ucheck.js";
 
 export function createRootCommand(): Command {
   const program = new Command();
@@ -27,6 +28,7 @@ export function createRootCommand(): Command {
   program.addCommand(createDoctorCommand(getGlobals));
   program.addCommand(createLmsCommand(getGlobals));
   program.addCommand(createMsiCommand(getGlobals));
+  program.addCommand(createUcheckCommand(getGlobals));
 
   for (const serviceCommand of createServiceCommands(getGlobals)) {
     program.addCommand(serviceCommand);
