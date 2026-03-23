@@ -17,6 +17,10 @@ export const STUDENT_MATERIAL_VIEW_URL =
   `${LMS_BASE}/ilos/cls/st/material/lecture_material_view_form.acl`;
 export const STUDENT_REPORT_VIEW_URL =
   `${LMS_BASE}/ilos/cls/st/report/report_view_form.acl`;
+export const STUDENT_ONLINE_VIEW_URL =
+  `${LMS_BASE}/ilos/cls/st/online/online_view_form.acl`;
+export const STUDENT_ONLINE_LEARNING_FORM_URL =
+  `${LMS_BASE}/ilos/cls/st/online/online_learning_form.acl`;
 export const STUDENT_OPEN_MATERIAL_LIST_URL =
   `${LMS_BASE}/ilos/cls/st/board/open_material_list.acl`;
 export const STUDENT_OPEN_MATERIAL_VIEW_URL =

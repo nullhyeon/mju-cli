@@ -9,6 +9,7 @@ import { listRegularTakenCourses } from "../lms/courses.js";
 import { resolveCourseReference } from "../lms/course-resolver.js";
 import { getCourseMaterial, listCourseMaterials } from "../lms/materials.js";
 import { getCourseNotice, listCourseNotices } from "../lms/notices.js";
+import { getCourseOnlineWeek, listCourseOnlineWeeks } from "../lms/online.js";
 import { MjuLmsSsoClient } from "../lms/sso-client.js";
 
 function parseOptionalInt(value: string | undefined, label: string): number | undefined {
@@ -53,10 +54,10 @@ export function createLmsCommand(getGlobals: () => GlobalOptions): Command {
             courses: ["list"],
             notices: ["list", "get"],
             materials: ["list", "get"],
-            assignments: ["list", "get"]
+            assignments: ["list", "get"],
+            online: ["list", "get"]
           },
           planned: {
-            online: ["list", "get"],
             attachments: ["download", "download-bulk"]
           }
         },
@@ -268,10 +269,62 @@ export function createLmsCommand(getGlobals: () => GlobalOptions): Command {
       printData(result, globals.format);
     });
 
+  const online = new Command("online").description("Read LMS online learning weeks");
+
+  online
+    .command("list")
+    .description("List online learning weeks for a course")
+    .option("--course <query>", "course title, course code, or kjkey")
+    .option("--kjkey <kjkey>", "explicit course kjkey")
+    .action(async (options: { course?: string; kjkey?: string }) => {
+      const globals = getGlobals();
+      const { client, credentials } = await createLmsClientWithCredentials(globals);
+      const resolvedCourse = await resolveCourseReference(client, credentials, {
+        course: options.course,
+        kjkey: options.kjkey
+      });
+      const result = await listCourseOnlineWeeks(client, {
+        userId: credentials.userId,
+        password: credentials.password,
+        kjkey: resolvedCourse.kjkey
+      });
+
+      printData(result, globals.format);
+    });
+
+  online
+    .command("get")
+    .description("Get a specific online learning week for a course")
+    .option("--course <query>", "course title, course code, or kjkey")
+    .option("--kjkey <kjkey>", "explicit course kjkey")
+    .requiredOption("--lecture-weeks <id>", "online learning lecture_weeks")
+    .action(async (options: { course?: string; kjkey?: string; lectureWeeks: string }) => {
+      const globals = getGlobals();
+      const { client, credentials } = await createLmsClientWithCredentials(globals);
+      const resolvedCourse = await resolveCourseReference(client, credentials, {
+        course: options.course,
+        kjkey: options.kjkey
+      });
+      const lectureWeeks = parseOptionalInt(options.lectureWeeks, "lecture-weeks");
+      if (lectureWeeks === undefined) {
+        throw new Error("lecture-weeks 는 필수입니다.");
+      }
+
+      const result = await getCourseOnlineWeek(client, {
+        userId: credentials.userId,
+        password: credentials.password,
+        kjkey: resolvedCourse.kjkey,
+        lectureWeeks
+      });
+
+      printData(result, globals.format);
+    });
+
   lms.addCommand(courses);
   lms.addCommand(notices);
   lms.addCommand(materials);
   lms.addCommand(assignments);
+  lms.addCommand(online);
 
   return lms;
 }

@@ -208,6 +208,57 @@ export interface AssignmentDetailResult {
   submission?: AssignmentSubmissionInfo;
 }
 
+export interface OnlineWeekSummary {
+  lectureWeeks: number;
+  title: string;
+  week?: number;
+  weekLabel?: string;
+  statusLabel?: string;
+  statusText?: string;
+}
+
+export interface OnlineWeekListResult {
+  kjkey: string;
+  courseTitle?: string;
+  weeks: OnlineWeekSummary[];
+}
+
+export interface OnlineLearningItem {
+  linkSeq: number;
+  title: string;
+  progressPercent?: number;
+  inPeriodProgressPercent?: number;
+  outOfPeriodProgressPercent?: number;
+  learningTime?: string;
+  attendanceTime?: string;
+  qnaCount?: number;
+  stampCount?: number;
+  thumbnailUrl?: string;
+}
+
+export interface OnlineLearningLaunchForm {
+  action: string;
+  lectureWeeks: number;
+  kjkey: string;
+  kjLectType?: string;
+}
+
+export interface OnlineWeekDetailResult {
+  kjkey: string;
+  courseTitle?: string;
+  lectureWeeks: number;
+  title?: string;
+  week?: number;
+  weekLabel?: string;
+  statusLabel?: string;
+  statusText?: string;
+  attendanceLabel?: string;
+  studyPeriod?: string;
+  warningMessages: string[];
+  launchForm: OnlineLearningLaunchForm;
+  items: OnlineLearningItem[];
+}
+
 export interface LoginSnapshotResult {
   loggedIn: boolean;
   usedSavedSession: boolean;
