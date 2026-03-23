@@ -1,0 +1,30 @@
+import { Command } from "commander";
+
+import { APP_DESCRIPTION, APP_NAME, APP_VERSION } from "../app-meta.js";
+import { registerGlobalOptions, resolveGlobalOptions } from "./common.js";
+import { createConfigCommand } from "./config.js";
+import { createDoctorCommand } from "./doctor.js";
+import { createServiceCommands } from "./services.js";
+
+export function createRootCommand(): Command {
+  const program = new Command();
+
+  program
+    .name("mju")
+    .description(APP_DESCRIPTION)
+    .version(APP_VERSION, "-V, --version", `${APP_NAME} version`)
+    .showHelpAfterError();
+
+  registerGlobalOptions(program);
+
+  const getGlobals = () => resolveGlobalOptions(program);
+
+  program.addCommand(createConfigCommand(getGlobals));
+  program.addCommand(createDoctorCommand(getGlobals));
+
+  for (const serviceCommand of createServiceCommands(getGlobals)) {
+    program.addCommand(serviceCommand);
+  }
+
+  return program;
+}

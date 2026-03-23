@@ -1,0 +1,28 @@
+{
+  "name": "mju-cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "One CLI for all of MJU services",
+  "type": "module",
+  "bin": {
+    "mju": "./dist/main.js"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "commander": "^14.0.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
