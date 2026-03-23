@@ -6,6 +6,7 @@ import type { GlobalOptions } from "../types.js";
 import { resolveLmsRuntimeConfig } from "../lms/config.js";
 import { listRegularTakenCourses } from "../lms/courses.js";
 import { resolveCourseReference } from "../lms/course-resolver.js";
+import { getCourseMaterial, listCourseMaterials } from "../lms/materials.js";
 import { getCourseNotice, listCourseNotices } from "../lms/notices.js";
 import { MjuLmsSsoClient } from "../lms/sso-client.js";
 
@@ -49,10 +50,10 @@ export function createLmsCommand(getGlobals: () => GlobalOptions): Command {
           service: "lms",
           implemented: {
             courses: ["list"],
-            notices: ["list", "get"]
+            notices: ["list", "get"],
+            materials: ["list", "get"]
           },
           planned: {
-            materials: ["list", "get"],
             assignments: ["list", "get"],
             online: ["list", "get"],
             attachments: ["download", "download-bulk"]
@@ -159,8 +160,62 @@ export function createLmsCommand(getGlobals: () => GlobalOptions): Command {
       printData(result, globals.format);
     });
 
+  const materials = new Command("materials").description("Read LMS course materials");
+
+  materials
+    .command("list")
+    .description("List materials for a course")
+    .option("--course <query>", "course title, course code, or kjkey")
+    .option("--kjkey <kjkey>", "explicit course kjkey")
+    .option("--search <query>", "search material text")
+    .action(async (options: { course?: string; kjkey?: string; search?: string }) => {
+      const globals = getGlobals();
+      const { client, credentials } = await createLmsClientWithCredentials(globals);
+      const resolvedCourse = await resolveCourseReference(client, credentials, {
+        course: options.course,
+        kjkey: options.kjkey
+      });
+      const result = await listCourseMaterials(client, {
+        userId: credentials.userId,
+        password: credentials.password,
+        kjkey: resolvedCourse.kjkey,
+        ...(options.search ? { search: options.search } : {})
+      });
+
+      printData(result, globals.format);
+    });
+
+  materials
+    .command("get")
+    .description("Get a specific material for a course")
+    .option("--course <query>", "course title, course code, or kjkey")
+    .option("--kjkey <kjkey>", "explicit course kjkey")
+    .requiredOption("--article-id <id>", "material article id")
+    .action(async (options: { course?: string; kjkey?: string; articleId: string }) => {
+      const globals = getGlobals();
+      const { client, credentials } = await createLmsClientWithCredentials(globals);
+      const resolvedCourse = await resolveCourseReference(client, credentials, {
+        course: options.course,
+        kjkey: options.kjkey
+      });
+      const articleId = parseOptionalInt(options.articleId, "article-id");
+      if (articleId === undefined) {
+        throw new Error("article-id 는 필수입니다.");
+      }
+
+      const result = await getCourseMaterial(client, {
+        userId: credentials.userId,
+        password: credentials.password,
+        kjkey: resolvedCourse.kjkey,
+        articleId
+      });
+
+      printData(result, globals.format);
+    });
+
   lms.addCommand(courses);
   lms.addCommand(notices);
+  lms.addCommand(materials);
 
   return lms;
 }

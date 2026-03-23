@@ -121,6 +121,50 @@ export interface NoticeDetailResult {
   attachments: LmsAttachment[];
 }
 
+export interface ActivityQnaTarget {
+  menuId: string;
+  articleId: number;
+  subArticleId?: string;
+}
+
+export interface MaterialSummary {
+  articleId: number;
+  title: string;
+  author?: string;
+  postedAt?: string;
+  viewCount?: number;
+  commentCount?: number;
+  isUnread?: boolean;
+  week?: number;
+  weekLabel?: string;
+  attachmentCount?: number;
+}
+
+export interface MaterialListResult {
+  kjkey: string;
+  courseTitle?: string;
+  search?: string;
+  total?: number;
+  week?: number;
+  materials: MaterialSummary[];
+}
+
+export interface MaterialDetailResult {
+  kjkey: string;
+  courseTitle?: string;
+  articleId: number;
+  title: string;
+  openAt?: string;
+  author?: string;
+  postedAt?: string;
+  viewCount?: number;
+  bodyHtml: string;
+  bodyText: string;
+  contentSeq?: string;
+  attachments: LmsAttachment[];
+  qnaTarget?: ActivityQnaTarget;
+}
+
 export interface LoginSnapshotResult {
   loggedIn: boolean;
   usedSavedSession: boolean;
