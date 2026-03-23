@@ -15,6 +15,13 @@ function hasFailureMarker(url: string, text: string): boolean {
   return LOGIN_FAILURE_MARKERS.some((marker) => url.includes(marker) || text.includes(marker));
 }
 
+export function looksLikeLoginPage(
+  response: Pick<DecodedResponse, "url" | "text">
+): boolean {
+  const url = response.url.toLowerCase();
+  return hasFailureMarker(url, response.text);
+}
+
 export function looksLoggedIn(response: DecodedResponse): boolean {
   const url = response.url.toLowerCase();
   const text = response.text;

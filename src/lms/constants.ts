@@ -26,3 +26,8 @@ export const STUDENT_OPEN_MATERIAL_LIST_URL =
 export const STUDENT_OPEN_MATERIAL_VIEW_URL =
   `${LMS_BASE}/ilos/cls/st/board/open_material_view_pop.acl`;
 export const FILE_LIST_URL = `${LMS_BASE}/ilos/co/efile_list.acl`;
+export const FILE_LIST2_URL = `${LMS_BASE}/ilos/co/efile_list2.acl`;
+export const FILE_UPLOAD_LIMIT_MESSAGE_URL =
+  `${LMS_BASE}/ilos/co/efile_limit_view.acl`;
+export const FILE_UPLOAD_LIMIT_SIZE_URL =
+  `${LMS_BASE}/ilos/co/file_lecture_limit_size.acl`;

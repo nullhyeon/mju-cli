@@ -77,6 +77,17 @@ export interface LmsAttachment {
   fileType?: string;
 }
 
+export interface DownloadedAttachmentFile {
+  fileName: string;
+  savedPath: string;
+  finalUrl: string;
+  sourceUrl: string;
+  byteLength: number;
+  statusCode: number;
+  contentType?: string;
+  contentDisposition?: string;
+}
+
 export interface ClassroomContext {
   kjkey: string;
   courseTitle?: string;
@@ -206,6 +217,99 @@ export interface AssignmentDetailResult {
   contentSeq?: string;
   attachments: LmsAttachment[];
   submission?: AssignmentSubmissionInfo;
+}
+
+export type AssignmentSubmitMode = "initial-submit" | "update-submit";
+
+export interface AssignmentSubmitPopupSpec {
+  mode: AssignmentSubmitMode;
+  submitPopupUrl: string;
+  submitButtonLabel?: string;
+  requiresTextInput: boolean;
+  textFieldName?: string;
+  hasFilePicker: boolean;
+  uploadUrl?: string;
+  uploadPath?: string;
+  uploadPfStFlag?: string;
+  submitCheckUrl?: string;
+  submitCheckDiv?: string;
+  submitUrl?: string;
+  submitContentSeq?: string;
+  existingFilesContentSeq?: string;
+  existingTextHtml?: string;
+  existingTextText?: string;
+}
+
+export interface AssignmentDeleteSpec {
+  hasDeleteButton: boolean;
+  deleteButtonLabel?: string;
+  submitCheckUrl?: string;
+  submitCheckDiv?: string;
+  deleteUrl?: string;
+  deleteContentSeq?: string;
+}
+
+export interface AssignmentSubmitDraftFileCheck {
+  path: string;
+  fileName: string;
+  exists: boolean;
+  sizeBytes?: number;
+  withinMaxFileSize?: boolean;
+  blockingReason?: string;
+}
+
+export interface AssignmentExistingAttachment {
+  fileSeq: string;
+  name: string;
+  sizeBytes?: number;
+  contentSeq?: string;
+}
+
+export interface AssignmentSubmitCheckResult {
+  kjkey: string;
+  rtSeq: number;
+  courseTitle?: string;
+  title: string;
+  submissionFormat?: string;
+  dueAt?: string;
+  summaryStatusLabel?: string;
+  summaryStatusText?: string;
+  submissionMode: AssignmentSubmitMode;
+  alreadySubmitted: boolean;
+  existingSubmissionStatus?: string;
+  existingSubmissionHtml?: string;
+  existingSubmissionText?: string;
+  existingAttachments: AssignmentExistingAttachment[];
+  hasSubmitButton: boolean;
+  submitButtonLabel?: string;
+  submitPopupUrl?: string;
+  requiresTextInput: boolean;
+  textFieldName?: string;
+  hasFilePicker: boolean;
+  uploadUrl?: string;
+  uploadPath?: string;
+  uploadPfStFlag?: string;
+  submitCheckUrl?: string;
+  submitCheckDiv?: string;
+  submitUrl?: string;
+  submitContentSeq?: string;
+  hasDeleteButton: boolean;
+  deleteButtonLabel?: string;
+  deleteSubmitCheckUrl?: string;
+  deleteSubmitCheckDiv?: string;
+  deleteUrl?: string;
+  deleteContentSeq?: string;
+  uploadLimitMessage?: string;
+  maxFileSizeLabel?: string;
+  maxFileSizeBytes?: number;
+  providedTextLength: number;
+  effectiveTextLength: number;
+  usedExistingTextFallback: boolean;
+  providedTextSatisfiesRequirement: boolean;
+  localFiles: AssignmentSubmitDraftFileCheck[];
+  canProceed: boolean;
+  blockingReasons: string[];
+  warnings: string[];
 }
 
 export interface OnlineWeekSummary {
