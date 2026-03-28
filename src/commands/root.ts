@@ -9,6 +9,7 @@ import { createLibraryCommand } from "./library.js";
 import { createLmsCommand } from "./lms.js";
 import { createMsiCommand } from "./msi.js";
 import { createServiceCommands } from "./services.js";
+import { createSkillsCommand } from "./skills.js";
 import { createUcheckCommand } from "./ucheck.js";
 
 export function createRootCommand(): Command {
@@ -30,6 +31,7 @@ export function createRootCommand(): Command {
   program.addCommand(createLibraryCommand(getGlobals));
   program.addCommand(createLmsCommand(getGlobals));
   program.addCommand(createMsiCommand(getGlobals));
+  program.addCommand(createSkillsCommand(getGlobals));
   program.addCommand(createUcheckCommand(getGlobals));
 
   for (const serviceCommand of createServiceCommands(getGlobals)) {
