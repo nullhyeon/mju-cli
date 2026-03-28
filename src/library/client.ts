@@ -78,7 +78,7 @@ export class MjuLibraryClient {
   }
 
   private async requestJson<T>(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "DELETE",
     url: string,
     options: JsonRequestOptions = {}
   ): Promise<LibraryApiEnvelope<T>> {
@@ -199,5 +199,43 @@ export class MjuLibraryClient {
     }
 
     return response.data;
+  }
+
+  async postApiData<T>(
+    path: string,
+    body: unknown,
+    options: Omit<JsonRequestOptions, "json"> = {}
+  ): Promise<T> {
+    const response = await this.requestJson<T>(
+      "POST",
+      `${LIBRARY_API_BASE_URL}${path}`,
+      {
+        headers: {
+          "content-type": "application/json",
+          ...(options.headers ?? {})
+        },
+        ...options,
+        json: body
+      }
+    );
+    if (!response.success || response.data === undefined) {
+      throw formatApiError("도서관 쓰기 요청에 실패했습니다.", response);
+    }
+
+    return response.data;
+  }
+
+  async deleteApiData(
+    path: string,
+    options: Omit<JsonRequestOptions, "json"> = {}
+  ): Promise<void> {
+    const response = await this.requestJson<unknown>(
+      "DELETE",
+      `${LIBRARY_API_BASE_URL}${path}`,
+      options
+    );
+    if (!response.success) {
+      throw formatApiError("도서관 삭제 요청에 실패했습니다.", response);
+    }
   }
 }

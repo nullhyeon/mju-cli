@@ -11,10 +11,14 @@ import {
   listLibraryStudyRooms
 } from "../library/services.js";
 import {
+  cancelLibrarySeatReservation,
+  createLibrarySeatReservation,
   explainLibraryReadingRoomSeatPosition,
   getLibraryReadingRoomDetail,
   listLibraryReadingRooms,
-  listLibrarySeatReservations
+  listLibrarySeatReservations,
+  previewLibrarySeatReservation,
+  previewLibrarySeatReservationCancel
 } from "../library/seat-services.js";
 import { printData } from "../output/print.js";
 import type { GlobalOptions } from "../types.js";
@@ -30,6 +34,12 @@ function parseOptionalInt(value: string | undefined, label: string): number | un
   }
 
   return parsed;
+}
+
+function ensureConfirmFlag(confirm: boolean | undefined, actionLabel: string): void {
+  if (confirm !== true) {
+    throw new Error(`${actionLabel} 는 실제 쓰기 작업입니다. 진행하려면 --confirm 을 함께 지정해주세요.`);
+  }
 }
 
 async function createLibraryClientWithCredentials(globals: GlobalOptions): Promise<{
@@ -61,12 +71,17 @@ export function createLibraryCommand(getGlobals: () => GlobalOptions): Command {
           implemented: {
             "study-rooms": ["list", "get", "list-reservations"],
             "reading-rooms": ["list", "get"],
-            seats: ["list-reservations"],
+            seats: [
+              "list-reservations",
+              "reserve-preview",
+              "reserve",
+              "cancel-preview",
+              "cancel"
+            ],
             helpers: ["+my-reservations", "+seat-position"]
           },
           planned: {
-            "study-rooms": ["reserve", "update-reservation", "cancel-reservation"],
-            seats: ["reserve", "cancel"]
+            "study-rooms": ["reserve", "update-reservation", "cancel-reservation"]
           }
         },
         globals.format
@@ -241,6 +256,90 @@ export function createLibraryCommand(getGlobals: () => GlobalOptions): Command {
       const globals = getGlobals();
       const { client, credentials } = await createLibraryClientWithCredentials(globals);
       const result = await listLibrarySeatReservations(client, credentials);
+
+      printData(result, globals.format);
+    });
+
+  seats
+    .command("reserve-preview")
+    .description("Preview a seat reservation without writing")
+    .requiredOption("--room-id <id>", "reading room id")
+    .requiredOption("--seat-id <id>", "seat id")
+    .action(async (options: { roomId: string; seatId: string }) => {
+      const globals = getGlobals();
+      const { client, credentials } = await createLibraryClientWithCredentials(globals);
+      const roomId = parseOptionalInt(options.roomId, "room-id");
+      const seatId = parseOptionalInt(options.seatId, "seat-id");
+      if (roomId === undefined || seatId === undefined) {
+        throw new Error("room-id 와 seat-id 는 필수입니다.");
+      }
+
+      const result = await previewLibrarySeatReservation(client, credentials, {
+        roomId,
+        seatId
+      });
+
+      printData(result, globals.format);
+    });
+
+  seats
+    .command("reserve")
+    .description("Create a seat reservation")
+    .requiredOption("--room-id <id>", "reading room id")
+    .requiredOption("--seat-id <id>", "seat id")
+    .option("--confirm", "actually create the reservation")
+    .action(async (options: { roomId: string; seatId: string; confirm?: boolean }) => {
+      ensureConfirmFlag(options.confirm, "library seats reserve");
+
+      const globals = getGlobals();
+      const { client, credentials } = await createLibraryClientWithCredentials(globals);
+      const roomId = parseOptionalInt(options.roomId, "room-id");
+      const seatId = parseOptionalInt(options.seatId, "seat-id");
+      if (roomId === undefined || seatId === undefined) {
+        throw new Error("room-id 와 seat-id 는 필수입니다.");
+      }
+
+      const result = await createLibrarySeatReservation(client, credentials, {
+        roomId,
+        seatId
+      });
+
+      printData(result, globals.format);
+    });
+
+  seats
+    .command("cancel-preview")
+    .description("Preview a seat reservation cancel without writing")
+    .requiredOption("--reservation-id <id>", "seat reservation id")
+    .action(async (options: { reservationId: string }) => {
+      const globals = getGlobals();
+      const { client, credentials } = await createLibraryClientWithCredentials(globals);
+      const reservationId = parseOptionalInt(options.reservationId, "reservation-id");
+      if (reservationId === undefined) {
+        throw new Error("reservation-id 는 필수입니다.");
+      }
+
+      const result = await previewLibrarySeatReservationCancel(client, credentials, reservationId);
+
+      printData(result, globals.format);
+    });
+
+  seats
+    .command("cancel")
+    .description("Cancel a seat reservation")
+    .requiredOption("--reservation-id <id>", "seat reservation id")
+    .option("--confirm", "actually cancel the reservation")
+    .action(async (options: { reservationId: string; confirm?: boolean }) => {
+      ensureConfirmFlag(options.confirm, "library seats cancel");
+
+      const globals = getGlobals();
+      const { client, credentials } = await createLibraryClientWithCredentials(globals);
+      const reservationId = parseOptionalInt(options.reservationId, "reservation-id");
+      if (reservationId === undefined) {
+        throw new Error("reservation-id 는 필수입니다.");
+      }
+
+      const result = await cancelLibrarySeatReservation(client, credentials, reservationId);
 
       printData(result, globals.format);
     });

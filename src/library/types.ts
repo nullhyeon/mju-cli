@@ -234,3 +234,50 @@ export interface LibrarySeatReservationSummary {
   renewableCount?: number;
   dateCreated?: string;
 }
+
+export interface LibrarySeatChargeableHour {
+  id: number;
+  isAllDayOpen: boolean;
+  beginTime: string;
+  endTime: string;
+  minUseTime: number;
+  maxUseTime: number;
+  defaultUseTime: number;
+}
+
+export interface LibrarySeatDetail {
+  seatId: number;
+  seatCode: string;
+  roomId: number;
+  roomName: string;
+  companionCount: number;
+  isOccupied: boolean;
+  isFavoriteSeat: boolean;
+  hasTimeline: boolean;
+  chargeableHour?: LibrarySeatChargeableHour;
+}
+
+export interface LibrarySeatReservationRequestInput {
+  roomId: number;
+  seatId: number;
+}
+
+export interface LibrarySeatReservationPreview {
+  roomId: number;
+  roomName: string;
+  seatId: number;
+  seatCode: string;
+  beginTime: string;
+  endTime: string;
+  reservationTime: string;
+  approvalWarnings: string[];
+  chargeableHour?: LibrarySeatChargeableHour;
+}
+
+export interface LibrarySeatReservationResult extends LibrarySeatReservationPreview {
+  reservationId: number;
+  stateCode?: string;
+  stateLabel?: string;
+  checkinExpiryDate?: string;
+  arrivalConfirmMethods: string[];
+}
