@@ -6,9 +6,11 @@ import {
   type LibraryCampusKey
 } from "./constants.js";
 import { MjuLibraryClient } from "./client.js";
+import { describeReadingRoomSeatPosition } from "./reading-room-seat-positions.js";
 import type {
   LibraryReadingRoomCampusAvailability,
   LibraryReadingRoomDetail,
+  LibraryReadingRoomSeatPositionResult,
   LibraryReadingRoomSummary,
   LibrarySeatReservationSummary,
   LibrarySeatReservableDate,
@@ -393,6 +395,53 @@ export async function getLibraryReadingRoomDetail(
       occupiedSeatCount: seats.filter((seat) => seat.isOccupied).length,
       reservableSeatCount: seats.filter((seat) => seat.isReservable).length
     }
+  };
+}
+
+export async function explainLibraryReadingRoomSeatPosition(
+  client: MjuLibraryClient,
+  credentials: ResolvedLmsCredentials,
+  options: {
+    roomId: number;
+    seatCode?: string;
+    seatId?: number;
+    hopeDate?: string;
+  }
+): Promise<{
+  user: LibraryUserInfo;
+  room: LibraryReadingRoomDetail;
+  seat: LibrarySeatSummary;
+  position: LibraryReadingRoomSeatPositionResult;
+}> {
+  const result = await getLibraryReadingRoomDetail(client, credentials, {
+    roomId: options.roomId,
+    ...(options.hopeDate ? { hopeDate: options.hopeDate } : {})
+  });
+
+  const normalizedSeatCode = options.seatCode?.trim();
+  const seat = result.room.seats.find((item) => {
+    if (options.seatId !== undefined && item.seatId === options.seatId) {
+      return true;
+    }
+
+    if (normalizedSeatCode && item.seatCode === normalizedSeatCode) {
+      return true;
+    }
+
+    return false;
+  });
+
+  if (!seat) {
+    throw new Error("지정한 좌석을 열람실 좌석 목록에서 찾지 못했습니다.");
+  }
+
+  const position = describeReadingRoomSeatPosition(result.room, seat);
+
+  return {
+    user: result.user,
+    room: result.room,
+    seat,
+    position
   };
 }
 

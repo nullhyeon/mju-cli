@@ -11,6 +11,7 @@ import {
   listLibraryStudyRooms
 } from "../library/services.js";
 import {
+  explainLibraryReadingRoomSeatPosition,
   getLibraryReadingRoomDetail,
   listLibraryReadingRooms,
   listLibrarySeatReservations
@@ -61,17 +62,69 @@ export function createLibraryCommand(getGlobals: () => GlobalOptions): Command {
             "study-rooms": ["list", "get", "list-reservations"],
             "reading-rooms": ["list", "get"],
             seats: ["list-reservations"],
-            helpers: ["+my-reservations"]
+            helpers: ["+my-reservations", "+seat-position"]
           },
           planned: {
             "study-rooms": ["reserve", "update-reservation", "cancel-reservation"],
-            seats: ["reserve", "cancel"],
-            helpers: ["+seat-position"]
+            seats: ["reserve", "cancel"]
           }
         },
         globals.format
       );
     });
+
+  library
+    .command("+seat-position")
+    .description("Explain a reading room seat position from seat code or seat id")
+    .requiredOption("--room-id <id>", "reading room id")
+    .option("--seat-id <id>", "seat id")
+    .option("--seat-code <code>", "seat code like 54")
+    .option("--hope-date <value>", "target datetime like 2026-03-23 09:00")
+    .action(
+      async (options: {
+        roomId: string;
+        seatId?: string;
+        seatCode?: string;
+        hopeDate?: string;
+      }) => {
+        const globals = getGlobals();
+        const { client, credentials } = await createLibraryClientWithCredentials(globals);
+        const roomId = parseOptionalInt(options.roomId, "room-id");
+        const seatId = parseOptionalInt(options.seatId, "seat-id");
+        const seatCode = options.seatCode?.trim();
+        if (roomId === undefined) {
+          throw new Error("room-id 는 필수입니다.");
+        }
+
+        if (seatId === undefined && !seatCode) {
+          throw new Error("seat-id 또는 seat-code 중 하나는 필수입니다.");
+        }
+
+        const result = await explainLibraryReadingRoomSeatPosition(client, credentials, {
+          roomId,
+          ...(seatId !== undefined ? { seatId } : {}),
+          ...(seatCode ? { seatCode } : {}),
+          ...(options.hopeDate ? { hopeDate: options.hopeDate } : {})
+        });
+
+        printData(
+          {
+            user: result.user,
+            room: {
+              roomId: result.room.roomId,
+              roomName: result.room.roomName,
+              hopeDate: result.room.hopeDate,
+              totalSeatCount: result.room.totalSeatCount,
+              occupiedSeatCount: result.room.occupiedSeatCount,
+              reservableSeatCount: result.room.reservableSeatCount
+            },
+            seat: result.seat,
+            position: result.position
+          },
+          globals.format
+        );
+      }
+    );
 
   library
     .command("+my-reservations")

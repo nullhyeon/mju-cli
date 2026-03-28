@@ -184,6 +184,36 @@ export interface LibraryReadingRoomDetail {
   reservableSeatCount: number;
 }
 
+export interface LibraryReadingRoomEntrance {
+  key: string;
+  label: string;
+  side:
+    | "left-top"
+    | "left-bottom"
+    | "left-center"
+    | "right-top"
+    | "right-bottom"
+    | "right-center"
+    | "bottom-left"
+    | "bottom-right";
+}
+
+export interface LibrarySeatPositionDescription {
+  entranceKey: string;
+  entranceLabel: string;
+  description: string;
+}
+
+export interface LibraryReadingRoomSeatPositionResult {
+  roomId: number;
+  roomName: string;
+  supported: boolean;
+  entrances: LibraryReadingRoomEntrance[];
+  seatId: number;
+  seatCode: string;
+  descriptions: LibrarySeatPositionDescription[];
+}
+
 export interface LibrarySeatReservationSummary {
   reservationId: number;
   roomId: number;
