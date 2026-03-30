@@ -6,9 +6,15 @@ import { MjuLibraryClient } from "../library/client.js";
 import { resolveLibraryRuntimeConfig } from "../library/config.js";
 import { getLibraryMyReservations } from "../library/helpers.js";
 import {
+  cancelLibraryRoomReservation,
+  createLibraryRoomReservation,
   getLibraryStudyRoomDetail,
   listLibraryRoomReservations,
-  listLibraryStudyRooms
+  listLibraryStudyRooms,
+  previewLibraryRoomReservation,
+  previewLibraryRoomReservationCancel,
+  previewLibraryRoomReservationUpdate,
+  updateLibraryRoomReservation
 } from "../library/services.js";
 import {
   cancelLibrarySeatReservation,
@@ -20,6 +26,7 @@ import {
   previewLibrarySeatReservation,
   previewLibrarySeatReservationCancel
 } from "../library/seat-services.js";
+import type { LibraryCompanionInput, LibraryReservationRequestInput } from "../library/types.js";
 import { printData } from "../output/print.js";
 import type { GlobalOptions } from "../types.js";
 
@@ -40,6 +47,148 @@ function ensureConfirmFlag(confirm: boolean | undefined, actionLabel: string): v
   if (confirm !== true) {
     throw new Error(`${actionLabel} 는 실제 쓰기 작업입니다. 진행하려면 --confirm 을 함께 지정해주세요.`);
   }
+}
+
+function parseCsv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function parseCompanionToken(token: string): LibraryCompanionInput {
+  const [left, ...rest] = token.split(":");
+  const right = rest.join(":").trim();
+  const normalizedLeft = left?.trim() ?? "";
+  if (!normalizedLeft || !right) {
+    throw new Error(
+      "companions 는 `학번:이름,학번:이름` 또는 `이름:학번,이름:학번` 형식이어야 합니다."
+    );
+  }
+
+  if (/^\d+$/.test(normalizedLeft)) {
+    return {
+      memberNo: normalizedLeft,
+      name: right
+    };
+  }
+
+  if (/^\d+$/.test(right)) {
+    return {
+      name: normalizedLeft,
+      memberNo: right
+    };
+  }
+
+  throw new Error(
+    "companions 각 항목은 `학번:이름` 또는 `이름:학번` 형식이어야 합니다."
+  );
+}
+
+function parseCompanions(value: string | undefined): LibraryCompanionInput[] | undefined {
+  const items = parseCsv(value);
+  if (items.length === 0) {
+    return undefined;
+  }
+
+  return items.map(parseCompanionToken);
+}
+
+function parseEquipmentIds(value: string | undefined): number[] | undefined {
+  const items = parseCsv(value);
+  if (items.length === 0) {
+    return undefined;
+  }
+
+  return items.map((item) => {
+    const parsed = Number.parseInt(item, 10);
+    if (Number.isNaN(parsed)) {
+      throw new Error("equipment-ids 는 쉼표로 구분한 정수 목록이어야 합니다.");
+    }
+    return parsed;
+  });
+}
+
+function parseAdditionalInfoValues(
+  value: string | undefined
+): Record<string, string> | undefined {
+  const items = parseCsv(value);
+  if (items.length === 0) {
+    return undefined;
+  }
+
+  const result: Record<string, string> = {};
+  for (const item of items) {
+    const index = item.indexOf("=");
+    if (index <= 0 || index === item.length - 1) {
+      throw new Error("additional-info 는 `key=value,key=value` 형식이어야 합니다.");
+    }
+
+    const key = item.slice(0, index).trim();
+    const parsedValue = item.slice(index + 1).trim();
+    if (!key || !parsedValue) {
+      throw new Error("additional-info 는 비어 있지 않은 key=value 쌍이어야 합니다.");
+    }
+
+    result[key] = parsedValue;
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function buildRoomReservationInput(
+  options: {
+    roomId?: string;
+    date: string;
+    beginTime: string;
+    endTime: string;
+    useSectionId?: string;
+    useSectionCode?: string;
+    useSectionName?: string;
+    companionCount?: string;
+    companions?: string;
+    patronMessage?: string;
+    equipmentIds?: string;
+    additionalInfo?: string;
+  },
+  options2: { requireRoomId: boolean; requireUseSection: boolean }
+): LibraryReservationRequestInput {
+  const roomId = parseOptionalInt(options.roomId, "room-id");
+  const useSectionId = parseOptionalInt(options.useSectionId, "use-section-id");
+  const companionCount = parseOptionalInt(options.companionCount, "companion-count");
+  const companions = parseCompanions(options.companions);
+  const equipmentIds = parseEquipmentIds(options.equipmentIds);
+  const additionalInfoValues = parseAdditionalInfoValues(options.additionalInfo);
+
+  if (options2.requireRoomId && roomId === undefined) {
+    throw new Error("room-id 는 필수입니다.");
+  }
+
+  if (
+    options2.requireUseSection &&
+    useSectionId === undefined &&
+    !options.useSectionCode?.trim() &&
+    !options.useSectionName?.trim()
+  ) {
+    throw new Error(
+      "use-section-id, use-section-code, use-section-name 중 하나는 필수입니다."
+    );
+  }
+
+  return {
+    roomId: roomId ?? -1,
+    date: options.date,
+    beginTime: options.beginTime,
+    endTime: options.endTime,
+    ...(useSectionId !== undefined ? { useSectionId } : {}),
+    ...(options.useSectionCode?.trim() ? { useSectionCode: options.useSectionCode.trim() } : {}),
+    ...(options.useSectionName?.trim() ? { useSectionName: options.useSectionName.trim() } : {}),
+    ...(companionCount !== undefined ? { companionCount } : {}),
+    ...(companions ? { companions } : {}),
+    ...(options.patronMessage?.trim() ? { patronMessage: options.patronMessage.trim() } : {}),
+    ...(equipmentIds ? { equipmentIds } : {}),
+    ...(additionalInfoValues ? { additionalInfoValues } : {})
+  };
 }
 
 async function createLibraryClientWithCredentials(globals: GlobalOptions): Promise<{
@@ -69,7 +218,17 @@ export function createLibraryCommand(getGlobals: () => GlobalOptions): Command {
         {
           service: "library",
           implemented: {
-            "study-rooms": ["list", "get", "list-reservations"],
+            "study-rooms": [
+              "list",
+              "get",
+              "list-reservations",
+              "reserve-preview",
+              "reserve",
+              "update-preview",
+              "update-reservation",
+              "cancel-preview",
+              "cancel-reservation"
+            ],
             "reading-rooms": ["list", "get"],
             seats: [
               "list-reservations",
@@ -80,9 +239,7 @@ export function createLibraryCommand(getGlobals: () => GlobalOptions): Command {
             ],
             helpers: ["+my-reservations", "+seat-position"]
           },
-          planned: {
-            "study-rooms": ["reserve", "update-reservation", "cancel-reservation"]
-          }
+          planned: {}
         },
         globals.format
       );
@@ -205,6 +362,267 @@ export function createLibraryCommand(getGlobals: () => GlobalOptions): Command {
       const { client, credentials } = await createLibraryClientWithCredentials(globals);
       const result = await listLibraryRoomReservations(client, credentials);
 
+      printData(result, globals.format);
+    });
+
+  studyRooms
+    .command("reserve-preview")
+    .description("Preview a study room reservation without writing")
+    .requiredOption("--room-id <id>", "study room id")
+    .requiredOption("--date <date>", "target date like 2026-03-31")
+    .requiredOption("--begin-time <time>", "start time like 18:00")
+    .requiredOption("--end-time <time>", "end time like 18:30")
+    .option("--use-section-id <id>", "use section id")
+    .option("--use-section-code <code>", "use section code like STUDY")
+    .option("--use-section-name <name>", "use section name like 학습")
+    .option("--companion-count <count>", "companion count")
+    .option(
+      "--companions <items>",
+      "comma-separated companions like 60212255:최진원,60212216:이윤형"
+    )
+    .option("--patron-message <text>", "message shown on reservation detail")
+    .option("--equipment-ids <ids>", "comma-separated equipment ids")
+    .option("--additional-info <pairs>", "comma-separated key=value pairs")
+    .action(
+      async (options: {
+        roomId: string;
+        date: string;
+        beginTime: string;
+        endTime: string;
+        useSectionId?: string;
+        useSectionCode?: string;
+        useSectionName?: string;
+        companionCount?: string;
+        companions?: string;
+        patronMessage?: string;
+        equipmentIds?: string;
+        additionalInfo?: string;
+      }) => {
+        const globals = getGlobals();
+        const { client, credentials } = await createLibraryClientWithCredentials(globals);
+        const input = buildRoomReservationInput(options, {
+          requireRoomId: true,
+          requireUseSection: true
+        });
+        const result = await previewLibraryRoomReservation(client, credentials, input);
+
+        printData(result, globals.format);
+      }
+    );
+
+  studyRooms
+    .command("reserve")
+    .description("Create a study room reservation")
+    .requiredOption("--room-id <id>", "study room id")
+    .requiredOption("--date <date>", "target date like 2026-03-31")
+    .requiredOption("--begin-time <time>", "start time like 18:00")
+    .requiredOption("--end-time <time>", "end time like 18:30")
+    .option("--use-section-id <id>", "use section id")
+    .option("--use-section-code <code>", "use section code like STUDY")
+    .option("--use-section-name <name>", "use section name like 학습")
+    .option("--companion-count <count>", "companion count")
+    .option(
+      "--companions <items>",
+      "comma-separated companions like 60212255:최진원,60212216:이윤형"
+    )
+    .option("--patron-message <text>", "message shown on reservation detail")
+    .option("--equipment-ids <ids>", "comma-separated equipment ids")
+    .option("--additional-info <pairs>", "comma-separated key=value pairs")
+    .option("--confirm", "actually create the reservation")
+    .action(
+      async (options: {
+        roomId: string;
+        date: string;
+        beginTime: string;
+        endTime: string;
+        useSectionId?: string;
+        useSectionCode?: string;
+        useSectionName?: string;
+        companionCount?: string;
+        companions?: string;
+        patronMessage?: string;
+        equipmentIds?: string;
+        additionalInfo?: string;
+        confirm?: boolean;
+      }) => {
+        ensureConfirmFlag(options.confirm, "library study-rooms reserve");
+
+        const globals = getGlobals();
+        const { client, credentials } = await createLibraryClientWithCredentials(globals);
+        const input = buildRoomReservationInput(options, {
+          requireRoomId: true,
+          requireUseSection: true
+        });
+        const result = await createLibraryRoomReservation(client, credentials, input);
+
+        printData(result, globals.format);
+      }
+    );
+
+  studyRooms
+    .command("update-preview")
+    .description("Preview a study room reservation update without writing")
+    .requiredOption("--reservation-id <id>", "study room reservation id")
+    .requiredOption("--date <date>", "target date like 2026-03-31")
+    .requiredOption("--begin-time <time>", "start time like 18:00")
+    .requiredOption("--end-time <time>", "end time like 18:30")
+    .option("--use-section-id <id>", "use section id")
+    .option("--use-section-code <code>", "use section code like STUDY")
+    .option("--use-section-name <name>", "use section name like 학습")
+    .option("--companion-count <count>", "companion count")
+    .option(
+      "--companions <items>",
+      "comma-separated companions like 60212255:최진원,60212216:이윤형"
+    )
+    .option("--patron-message <text>", "message shown on reservation detail")
+    .option("--equipment-ids <ids>", "comma-separated equipment ids")
+    .option("--additional-info <pairs>", "comma-separated key=value pairs")
+    .action(
+      async (options: {
+        reservationId: string;
+        date: string;
+        beginTime: string;
+        endTime: string;
+        useSectionId?: string;
+        useSectionCode?: string;
+        useSectionName?: string;
+        companionCount?: string;
+        companions?: string;
+        patronMessage?: string;
+        equipmentIds?: string;
+        additionalInfo?: string;
+      }) => {
+        const globals = getGlobals();
+        const { client, credentials } = await createLibraryClientWithCredentials(globals);
+        const reservationId = parseOptionalInt(options.reservationId, "reservation-id");
+        if (reservationId === undefined) {
+          throw new Error("reservation-id 는 필수입니다.");
+        }
+
+        const input = buildRoomReservationInput(options, {
+          requireRoomId: false,
+          requireUseSection: false
+        });
+        const result = await previewLibraryRoomReservationUpdate(client, credentials, reservationId, {
+          date: input.date,
+          beginTime: input.beginTime,
+          endTime: input.endTime,
+          ...(input.useSectionId !== undefined ? { useSectionId: input.useSectionId } : {}),
+          ...(input.useSectionCode ? { useSectionCode: input.useSectionCode } : {}),
+          ...(input.useSectionName ? { useSectionName: input.useSectionName } : {}),
+          ...(input.companionCount !== undefined ? { companionCount: input.companionCount } : {}),
+          ...(input.companions ? { companions: input.companions } : {}),
+          ...(input.patronMessage ? { patronMessage: input.patronMessage } : {}),
+          ...(input.equipmentIds ? { equipmentIds: input.equipmentIds } : {}),
+          ...(input.additionalInfoValues
+            ? { additionalInfoValues: input.additionalInfoValues }
+            : {})
+        });
+
+        printData(result, globals.format);
+      }
+    );
+
+  studyRooms
+    .command("update-reservation")
+    .description("Update a study room reservation")
+    .requiredOption("--reservation-id <id>", "study room reservation id")
+    .requiredOption("--date <date>", "target date like 2026-03-31")
+    .requiredOption("--begin-time <time>", "start time like 18:00")
+    .requiredOption("--end-time <time>", "end time like 18:30")
+    .option("--use-section-id <id>", "use section id")
+    .option("--use-section-code <code>", "use section code like STUDY")
+    .option("--use-section-name <name>", "use section name like 학습")
+    .option("--companion-count <count>", "companion count")
+    .option(
+      "--companions <items>",
+      "comma-separated companions like 60212255:최진원,60212216:이윤형"
+    )
+    .option("--patron-message <text>", "message shown on reservation detail")
+    .option("--equipment-ids <ids>", "comma-separated equipment ids")
+    .option("--additional-info <pairs>", "comma-separated key=value pairs")
+    .option("--confirm", "actually update the reservation")
+    .action(
+      async (options: {
+        reservationId: string;
+        date: string;
+        beginTime: string;
+        endTime: string;
+        useSectionId?: string;
+        useSectionCode?: string;
+        useSectionName?: string;
+        companionCount?: string;
+        companions?: string;
+        patronMessage?: string;
+        equipmentIds?: string;
+        additionalInfo?: string;
+        confirm?: boolean;
+      }) => {
+        ensureConfirmFlag(options.confirm, "library study-rooms update-reservation");
+
+        const globals = getGlobals();
+        const { client, credentials } = await createLibraryClientWithCredentials(globals);
+        const reservationId = parseOptionalInt(options.reservationId, "reservation-id");
+        if (reservationId === undefined) {
+          throw new Error("reservation-id 는 필수입니다.");
+        }
+
+        const input = buildRoomReservationInput(options, {
+          requireRoomId: false,
+          requireUseSection: false
+        });
+        const result = await updateLibraryRoomReservation(client, credentials, reservationId, {
+          date: input.date,
+          beginTime: input.beginTime,
+          endTime: input.endTime,
+          ...(input.useSectionId !== undefined ? { useSectionId: input.useSectionId } : {}),
+          ...(input.useSectionCode ? { useSectionCode: input.useSectionCode } : {}),
+          ...(input.useSectionName ? { useSectionName: input.useSectionName } : {}),
+          ...(input.companionCount !== undefined ? { companionCount: input.companionCount } : {}),
+          ...(input.companions ? { companions: input.companions } : {}),
+          ...(input.patronMessage ? { patronMessage: input.patronMessage } : {}),
+          ...(input.equipmentIds ? { equipmentIds: input.equipmentIds } : {}),
+          ...(input.additionalInfoValues
+            ? { additionalInfoValues: input.additionalInfoValues }
+            : {})
+        });
+
+        printData(result, globals.format);
+      }
+    );
+
+  studyRooms
+    .command("cancel-preview")
+    .description("Preview a study room reservation cancel without writing")
+    .requiredOption("--reservation-id <id>", "study room reservation id")
+    .action(async (options: { reservationId: string }) => {
+      const globals = getGlobals();
+      const { client, credentials } = await createLibraryClientWithCredentials(globals);
+      const reservationId = parseOptionalInt(options.reservationId, "reservation-id");
+      if (reservationId === undefined) {
+        throw new Error("reservation-id 는 필수입니다.");
+      }
+
+      const result = await previewLibraryRoomReservationCancel(client, credentials, reservationId);
+      printData(result, globals.format);
+    });
+
+  studyRooms
+    .command("cancel-reservation")
+    .description("Cancel a study room reservation")
+    .requiredOption("--reservation-id <id>", "study room reservation id")
+    .option("--confirm", "actually cancel the reservation")
+    .action(async (options: { reservationId: string; confirm?: boolean }) => {
+      ensureConfirmFlag(options.confirm, "library study-rooms cancel-reservation");
+
+      const globals = getGlobals();
+      const { client, credentials } = await createLibraryClientWithCredentials(globals);
+      const reservationId = parseOptionalInt(options.reservationId, "reservation-id");
+      if (reservationId === undefined) {
+        throw new Error("reservation-id 는 필수입니다.");
+      }
+
+      const result = await cancelLibraryRoomReservation(client, credentials, reservationId);
       printData(result, globals.format);
     });
 

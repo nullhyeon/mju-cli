@@ -34,6 +34,12 @@ function formatApiError(
   return new Error(parts.join(" "));
 }
 
+function isSuccessfulEnvelope(
+  payload: Pick<LibraryApiEnvelope<unknown>, "success" | "code">
+): boolean {
+  return payload.success === true || payload.code?.startsWith("success.") === true;
+}
+
 export class MjuLibraryClient {
   private readonly http;
 
@@ -78,7 +84,7 @@ export class MjuLibraryClient {
   }
 
   private async requestJson<T>(
-    method: "GET" | "POST" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "DELETE",
     url: string,
     options: JsonRequestOptions = {}
   ): Promise<LibraryApiEnvelope<T>> {
@@ -218,11 +224,35 @@ export class MjuLibraryClient {
         json: body
       }
     );
-    if (!response.success || response.data === undefined) {
+    if (!isSuccessfulEnvelope(response)) {
       throw formatApiError("도서관 쓰기 요청에 실패했습니다.", response);
     }
 
-    return response.data;
+    return (response.data ?? undefined) as T;
+  }
+
+  async putApiData<T>(
+    path: string,
+    body: unknown,
+    options: Omit<JsonRequestOptions, "json"> = {}
+  ): Promise<T> {
+    const response = await this.requestJson<T>(
+      "PUT",
+      `${LIBRARY_API_BASE_URL}${path}`,
+      {
+        headers: {
+          "content-type": "application/json",
+          ...(options.headers ?? {})
+        },
+        ...options,
+        json: body
+      }
+    );
+    if (!isSuccessfulEnvelope(response)) {
+      throw formatApiError("도서관 수정 요청에 실패했습니다.", response);
+    }
+
+    return (response.data ?? undefined) as T;
   }
 
   async deleteApiData(
@@ -234,7 +264,7 @@ export class MjuLibraryClient {
       `${LIBRARY_API_BASE_URL}${path}`,
       options
     );
-    if (!response.success) {
+    if (!isSuccessfulEnvelope(response)) {
       throw formatApiError("도서관 삭제 요청에 실패했습니다.", response);
     }
   }

@@ -10,6 +10,12 @@ import { MjuLibraryClient } from "./client.js";
 import type {
   LibraryBlockedTimeRange,
   LibraryCampusAvailability,
+  LibraryCompanion,
+  LibraryCompanionInput,
+  LibraryReservationMutationPreview,
+  LibraryReservationMutationResult,
+  LibraryReservationRequestInput,
+  LibraryRoomReservationDetail,
   LibraryRoomReservationSummary,
   LibraryStudyRoomDetail,
   LibraryStudyRoomSummary,
@@ -98,6 +104,12 @@ interface RawFloorsAndDates {
   reservableMonths?: string[] | null;
 }
 
+interface RawPatron {
+  id?: number;
+  name?: string;
+  memberNo?: string;
+}
+
 interface RawRoomChargeSummary {
   id?: number;
   companionCnt?: number;
@@ -111,6 +123,36 @@ interface RawRoomChargeSummary {
     name?: string;
     branch?: RawBranch;
   };
+}
+
+interface RawRoomChargeDetail {
+  id?: number;
+  reservationTime?: string;
+  beginTime?: string;
+  endTime?: string;
+  patron?: RawPatron;
+  room?: RawRoomDetail;
+  useSection?: RawUseSection;
+  state?: { code?: string; name?: string };
+  isEditable?: boolean;
+  companionCnt?: number;
+  patronMessage?: string;
+  workerMessage?: string;
+  dateCreated?: string;
+  companions?: RawPatron[] | null;
+  outsiders?: Array<{ name?: string; belong?: string }> | null;
+  equipments?: RawEquipment[] | null;
+  logs?: Array<Record<string, unknown>> | null;
+  expansionValues?: Array<Record<string, unknown>> | null;
+  isCheckinable?: boolean;
+  isReturnable?: boolean;
+  isRenewable?: boolean;
+}
+
+interface RawCheckedCompanion {
+  id?: number;
+  name?: string;
+  memberNo?: string;
 }
 
 function cleanString(value: unknown): string | undefined {
@@ -200,6 +242,14 @@ function mapUseSection(raw: RawUseSection): LibraryUseSection {
   };
 }
 
+function mapCompanion(raw: RawPatron): LibraryCompanion {
+  return {
+    id: ensureNumber(raw.id, "동행자 id 를 찾지 못했습니다."),
+    name: ensureString(raw.name, "동행자 이름을 찾지 못했습니다."),
+    memberNo: ensureString(raw.memberNo, "동행자 학번을 찾지 못했습니다.")
+  };
+}
+
 function parseTimeLabel(value: string): number {
   const match = /^(\d{2,3}):(\d{2})$/.exec(value);
   if (!match) {
@@ -213,6 +263,21 @@ function formatTimeLabel(totalMinutes: number): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function formatReservationDateTime(date: string, time: string): string {
+  const [yearText, monthText, dayText] = date.split("-");
+  const year = Number.parseInt(yearText ?? "", 10);
+  const month = Number.parseInt(monthText ?? "", 10);
+  const day = Number.parseInt(dayText ?? "", 10);
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    throw new Error(`날짜 형식이 올바르지 않습니다: ${date}`);
+  }
+
+  const totalMinutes = parseTimeLabel(time);
+  const result = new Date(Date.UTC(year, month - 1, day, 0, totalMinutes));
+
+  return `${result.getUTCFullYear()}-${String(result.getUTCMonth() + 1).padStart(2, "0")}-${String(result.getUTCDate()).padStart(2, "0")} ${String(result.getUTCHours()).padStart(2, "0")}:${String(result.getUTCMinutes()).padStart(2, "0")}`;
 }
 
 function flattenTimeLineEntry(value: unknown, target: LibraryTimeSlot[]): void {
@@ -521,6 +586,81 @@ function mapRoomReservationSummary(raw: RawRoomChargeSummary): LibraryRoomReserv
   };
 }
 
+function mapExpansionValues(
+  values: Array<Record<string, unknown>> | null | undefined
+): Record<string, string> {
+  const result: Record<string, string> = {};
+
+  for (const item of values ?? []) {
+    for (const [key, value] of Object.entries(item)) {
+      const normalized = cleanString(value);
+      if (normalized) {
+        result[key] = normalized;
+      }
+    }
+  }
+
+  return result;
+}
+
+function mapRoomReservationDetail(raw: RawRoomChargeDetail): LibraryRoomReservationDetail {
+  const campusName = cleanString(raw.room?.branch?.name);
+  const campusAlias = cleanString(raw.room?.branch?.alias);
+  const buildingName = cleanString(raw.room?.building?.name);
+  const floorLabel = cleanString(raw.room?.floor?.label);
+  const stateCode = cleanString(raw.state?.code);
+  const stateLabel = cleanString(raw.state?.name);
+  const patronMessage = cleanString(raw.patronMessage);
+  const workerMessage = cleanString(raw.workerMessage);
+  const dateCreated = cleanString(raw.dateCreated);
+  const timeUnit = cleanString(raw.room?.rule?.timeUnit);
+  const minDurationMinutes = cleanNumber(raw.room?.rule?.minTime);
+  const maxDurationMinutes = cleanNumber(raw.room?.rule?.maxTime);
+  const minQuota = cleanNumber(raw.room?.minQuota);
+  const maxQuota = cleanNumber(raw.room?.maxQuota);
+
+  return {
+    reservationId: ensureNumber(raw.id, "예약 상세 id 를 찾지 못했습니다."),
+    roomId: ensureNumber(raw.room?.id, "예약 상세의 room id 를 찾지 못했습니다."),
+    roomName: ensureString(raw.room?.name, "예약 상세의 room 이름을 찾지 못했습니다."),
+    ...(campusName !== undefined ? { campusName } : {}),
+    ...(campusAlias !== undefined ? { campusAlias } : {}),
+    ...(buildingName !== undefined ? { buildingName } : {}),
+    ...(floorLabel !== undefined ? { floorLabel } : {}),
+    reservationTime:
+      ensureString(raw.reservationTime, "예약 상세 시간 문자열을 찾지 못했습니다."),
+    beginTime: ensureString(raw.beginTime, "예약 시작 시각을 찾지 못했습니다."),
+    endTime: ensureString(raw.endTime, "예약 종료 시각을 찾지 못했습니다."),
+    ...(stateCode !== undefined ? { stateCode } : {}),
+    ...(stateLabel !== undefined ? { stateLabel } : {}),
+    ...(raw.useSection ? { useSection: mapUseSection(raw.useSection) } : {}),
+    isEditable: raw.isEditable === true,
+    isCheckinable: raw.isCheckinable === true,
+    isReturnable: raw.isReturnable === true,
+    isRenewable: raw.isRenewable === true,
+    companionCount: cleanNumber(raw.companionCnt) ?? 0,
+    companions: (raw.companions ?? []).map(mapCompanion),
+    ...(patronMessage !== undefined ? { patronMessage } : {}),
+    ...(workerMessage !== undefined ? { workerMessage } : {}),
+    ...(dateCreated !== undefined ? { dateCreated } : {}),
+    ...(timeUnit !== undefined ? { timeUnit } : {}),
+    ...(minDurationMinutes !== undefined ? { minDurationMinutes } : {}),
+    ...(maxDurationMinutes !== undefined ? { maxDurationMinutes } : {}),
+    ...(minQuota !== undefined ? { minQuota } : {}),
+    ...(maxQuota !== undefined ? { maxQuota } : {}),
+    useCompanionRegistration: raw.room?.rule?.useCompanionRegistration === true,
+    useOutsiderRegistration: raw.room?.rule?.useOutsiderRegistration === true,
+    equipmentIds: (raw.equipments ?? [])
+      .map((equipment) => cleanNumber(equipment.id))
+      .filter((id): id is number => id !== undefined),
+    additionalInfoValues: mapExpansionValues(raw.expansionValues)
+  };
+}
+
+function buildReservationTimeLabel(date: string, beginTime: string, endTime: string): string {
+  return `${date} ${beginTime} ~ ${endTime}`;
+}
+
 async function ensureAuthenticated(
   client: MjuLibraryClient,
   credentials: ResolvedLmsCredentials
@@ -553,6 +693,279 @@ async function fetchUseSections(
     `/${LIBRARY_HOMEPAGE_ID}/api/rooms/${roomId}/use-sections`
   );
   return (response.list ?? []).map(mapUseSection);
+}
+
+async function getLibraryStudyRoomDetailInternal(
+  client: MjuLibraryClient,
+  options: {
+    roomId: number;
+    date: string;
+    beginTime?: string;
+  }
+): Promise<LibraryStudyRoomDetail> {
+  const rawRoom = await client.getApiData<RawRoomDetail>(
+    `/${LIBRARY_HOMEPAGE_ID}/api/rooms/${options.roomId}`,
+    {
+      searchParams: {
+        hopeDate: options.date
+      }
+    }
+  );
+  const useSections = await fetchUseSections(client, options.roomId);
+  return mapRoomDetail(rawRoom, useSections, options.date, options.beginTime);
+}
+
+async function getLibraryRoomReservationDetailInternal(
+  client: MjuLibraryClient,
+  reservationId: number
+): Promise<LibraryRoomReservationDetail> {
+  const raw = await client.getApiData<RawRoomChargeDetail>(
+    `/${LIBRARY_HOMEPAGE_ID}/api/room-charges/${reservationId}`
+  );
+  return mapRoomReservationDetail(raw);
+}
+
+function resolveUseSection(
+  useSections: LibraryUseSection[],
+  input: Pick<
+    LibraryReservationRequestInput,
+    "useSectionId" | "useSectionCode" | "useSectionName"
+  >,
+  fallback?: LibraryUseSection
+): LibraryUseSection {
+  const candidates = useSections.filter((section) => {
+    if (input.useSectionId !== undefined && section.id === input.useSectionId) {
+      return true;
+    }
+    if (
+      input.useSectionCode &&
+      section.code.toLowerCase() === input.useSectionCode.trim().toLowerCase()
+    ) {
+      return true;
+    }
+    if (
+      input.useSectionName &&
+      section.name.toLowerCase() === input.useSectionName.trim().toLowerCase()
+    ) {
+      return true;
+    }
+    return false;
+  });
+
+  if (candidates.length === 1) {
+    return candidates[0]!;
+  }
+
+  if (candidates.length > 1) {
+    throw new Error("이용 목적이 여러 개로 해석되었습니다. id 또는 code 로 명시해주세요.");
+  }
+
+  if (fallback) {
+    return fallback;
+  }
+
+  throw new Error(
+    "이용 목적을 찾지 못했습니다. useSectionId/useSectionCode/useSectionName 중 하나를 지정해주세요."
+  );
+}
+
+async function resolveCompanions(
+  client: MjuLibraryClient,
+  roomId: number,
+  date: string,
+  companions: LibraryCompanionInput[] | undefined,
+  fallbackCompanions: LibraryCompanion[] = []
+): Promise<LibraryCompanion[]> {
+  if (!companions || companions.length === 0) {
+    return fallbackCompanions;
+  }
+
+  const resolved: LibraryCompanion[] = [];
+  for (const companion of companions) {
+    const name = companion.name.trim();
+    const memberNo = companion.memberNo.trim();
+    if (!name || !memberNo) {
+      throw new Error("동행자는 name 과 memberNo 를 모두 제공해야 합니다.");
+    }
+
+    const payload = await client.getApiData<RawCheckedCompanion>(
+      `/api/rooms/${roomId}/check-companions`,
+      {
+        searchParams: {
+          name,
+          memberNo,
+          hopeDate: date
+        }
+      }
+    );
+    resolved.push(mapCompanion(payload));
+  }
+
+  const uniqueIds = new Set(resolved.map((companion) => companion.id));
+  if (uniqueIds.size !== resolved.length) {
+    throw new Error("동행자 목록에 중복된 사용자가 포함되어 있습니다.");
+  }
+
+  return resolved;
+}
+
+function buildAdditionalInfoPayload(
+  additionalInfoValues: Record<string, string> | undefined
+): Array<Record<string, string>> {
+  return Object.entries(additionalInfoValues ?? {}).map(([key, value]) => ({
+    [key]: value
+  }));
+}
+
+function validateCompanionCount(params: {
+  companionCount: number;
+  minQuota: number | undefined;
+  maxQuota: number | undefined;
+  resolvedCompanions: LibraryCompanion[];
+  useCompanionRegistration: boolean;
+}): void {
+  const minCompanionCount =
+    params.minQuota !== undefined ? Math.max(params.minQuota - 1, 0) : 0;
+  const maxCompanionCount =
+    params.maxQuota !== undefined ? Math.max(params.maxQuota - 1, 0) : Number.MAX_SAFE_INTEGER;
+
+  if (params.companionCount < minCompanionCount) {
+    throw new Error(`이 공간은 최소 ${minCompanionCount}명의 동행자가 필요합니다.`);
+  }
+
+  if (params.companionCount > maxCompanionCount) {
+    throw new Error(`이 공간의 최대 동행자 수는 ${maxCompanionCount}명입니다.`);
+  }
+
+  if (
+    params.useCompanionRegistration &&
+    params.companionCount !== params.resolvedCompanions.length
+  ) {
+    throw new Error(
+      `동행자 수(${params.companionCount})와 확인된 동행자 목록 수(${params.resolvedCompanions.length})가 일치하지 않습니다.`
+    );
+  }
+}
+
+async function buildReservationPreview(
+  client: MjuLibraryClient,
+  input: LibraryReservationRequestInput,
+  options: {
+    existingDetail?: LibraryRoomReservationDetail | undefined;
+  } = {}
+): Promise<LibraryReservationMutationPreview> {
+  const detail = await getLibraryStudyRoomDetailInternal(client, {
+    roomId: input.roomId,
+    date: input.date,
+    beginTime: input.beginTime
+  });
+  const existingDetail = options.existingDetail;
+
+  const useSection = resolveUseSection(detail.useSections, input, existingDetail?.useSection);
+
+  const resolvedCompanions = await resolveCompanions(
+    client,
+    input.roomId,
+    input.date,
+    input.companions,
+    existingDetail?.companions ?? []
+  );
+  const companionCount =
+    input.companionCount ?? existingDetail?.companionCount ?? resolvedCompanions.length;
+
+  validateCompanionCount({
+    companionCount,
+    minQuota: detail.minQuota,
+    maxQuota: detail.maxQuota,
+    resolvedCompanions,
+    useCompanionRegistration: detail.useCompanionRegistration
+  });
+
+  if (detail.minDurationMinutes !== undefined && detail.maxDurationMinutes !== undefined) {
+    const endTimes = deriveReservableEndTimes(
+      detail.timeline,
+      input.beginTime,
+      detail.minDurationMinutes,
+      detail.maxDurationMinutes
+    );
+    if (!endTimes.includes(input.endTime)) {
+      throw new Error(
+        `선택한 종료 시각 ${input.endTime} 는 예약 가능 범위가 아닙니다. 가능 종료 시각: ${endTimes.join(", ")}`
+      );
+    }
+  }
+
+  if (!hasAvailableTimeRange(detail.timeline, input.beginTime, input.endTime)) {
+    throw new Error("선택한 시간대에 이미 예약 또는 사용 불가 구간이 포함되어 있습니다.");
+  }
+
+  const approvalWarnings: string[] = [];
+  if (!detail.isChargeable) {
+    approvalWarnings.push("현재 공간 상세 응답 기준으로 isChargeable=false 입니다.");
+  }
+
+  return {
+    roomId: detail.roomId,
+    roomName: detail.roomName,
+    ...(detail.campusName ? { campusName: detail.campusName } : {}),
+    ...(detail.campusAlias ? { campusAlias: detail.campusAlias } : {}),
+    date: input.date,
+    beginTime: input.beginTime,
+    endTime: input.endTime,
+    reservationTime: buildReservationTimeLabel(input.date, input.beginTime, input.endTime),
+    useSection,
+    companionCount,
+    resolvedCompanions,
+    approvalWarnings
+  };
+}
+
+function buildReservationPayload(
+  preview: LibraryReservationMutationPreview,
+  input: LibraryReservationRequestInput,
+  detail: LibraryStudyRoomDetail
+): Record<string, unknown> {
+  return {
+    roomId: preview.roomId,
+    roomUseSectionId: preview.useSection.id,
+    beginTime: formatReservationDateTime(input.date, input.beginTime),
+    endTime: formatReservationDateTime(input.date, input.endTime),
+    companionCnt: preview.companionCount,
+    ...(detail.useCompanionRegistration
+      ? {
+          companionPatrons: preview.resolvedCompanions.map((companion) => companion.id)
+        }
+      : {}),
+    roomChargeOutsiders: [],
+    roomChargeEquipments: input.equipmentIds ?? [],
+    patronMessage: input.patronMessage ?? "",
+    smufMethodCode: LIBRARY_SMUF_METHOD_CODE,
+    roomChargeAdditionInfos: buildAdditionalInfoPayload(input.additionalInfoValues)
+  };
+}
+
+async function findMatchingRoomReservation(
+  client: MjuLibraryClient,
+  credentials: ResolvedLmsCredentials,
+  input: LibraryReservationRequestInput
+): Promise<LibraryRoomReservationSummary> {
+  const { reservations } = await listLibraryRoomReservations(client, credentials);
+  const expectedBeginTime = `${input.date} ${input.beginTime}:00`;
+  const expectedEndTime = `${input.date} ${input.endTime}:00`;
+  const matched = reservations
+    .filter(
+      (reservation) =>
+        reservation.roomId === input.roomId &&
+        reservation.beginTime === expectedBeginTime &&
+        reservation.endTime === expectedEndTime
+    )
+    .sort((left, right) => right.reservationId - left.reservationId)[0];
+
+  if (!matched) {
+    throw new Error("생성된 예약을 예약 목록에서 다시 찾지 못했습니다.");
+  }
+
+  return matched;
 }
 
 export async function listLibraryStudyRooms(
@@ -618,19 +1031,9 @@ export async function getLibraryStudyRoomDetail(
   room: LibraryStudyRoomDetail;
 }> {
   const user = await ensureAuthenticated(client, credentials);
-  const rawRoom = await client.getApiData<RawRoomDetail>(
-    `/${LIBRARY_HOMEPAGE_ID}/api/rooms/${options.roomId}`,
-    {
-      searchParams: {
-        hopeDate: options.date
-      }
-    }
-  );
-  const useSections = await fetchUseSections(client, options.roomId);
-
   return {
     user,
-    room: mapRoomDetail(rawRoom, useSections, options.date, options.beginTime)
+    room: await getLibraryStudyRoomDetailInternal(client, options)
   };
 }
 
@@ -658,5 +1061,170 @@ export async function listLibraryRoomReservations(
   return {
     user,
     reservations: (raw.list ?? []).map(mapRoomReservationSummary)
+  };
+}
+
+export async function previewLibraryRoomReservation(
+  client: MjuLibraryClient,
+  credentials: ResolvedLmsCredentials,
+  input: LibraryReservationRequestInput
+): Promise<{
+  user: LibraryUserInfo;
+  preview: LibraryReservationMutationPreview;
+}> {
+  const user = await ensureAuthenticated(client, credentials);
+  const preview = await buildReservationPreview(client, input);
+  return { user, preview };
+}
+
+export async function createLibraryRoomReservation(
+  client: MjuLibraryClient,
+  credentials: ResolvedLmsCredentials,
+  input: LibraryReservationRequestInput
+): Promise<{
+  user: LibraryUserInfo;
+  result: LibraryReservationMutationResult;
+}> {
+  const user = await ensureAuthenticated(client, credentials);
+  const preview = await buildReservationPreview(client, input);
+  const roomDetail = await getLibraryStudyRoomDetailInternal(client, {
+    roomId: input.roomId,
+    date: input.date
+  });
+  const payload = buildReservationPayload(preview, input, roomDetail);
+  const created = await client.postApiData<{ id?: number } | undefined>(
+    `/${LIBRARY_HOMEPAGE_ID}/api/room-charges`,
+    payload
+  );
+  const reservationId =
+    cleanNumber(created?.id) ??
+    (await findMatchingRoomReservation(client, credentials, input)).reservationId;
+  const detail = await getLibraryRoomReservationDetailInternal(client, reservationId);
+
+  return {
+    user,
+    result: {
+      ...preview,
+      reservationId,
+      ...(detail.stateCode ? { stateCode: detail.stateCode } : {}),
+      ...(detail.stateLabel ? { stateLabel: detail.stateLabel } : {})
+    }
+  };
+}
+
+export async function previewLibraryRoomReservationUpdate(
+  client: MjuLibraryClient,
+  credentials: ResolvedLmsCredentials,
+  reservationId: number,
+  input: Omit<LibraryReservationRequestInput, "roomId">
+): Promise<{
+  user: LibraryUserInfo;
+  existingReservation: LibraryRoomReservationDetail;
+  preview: LibraryReservationMutationPreview;
+}> {
+  const user = await ensureAuthenticated(client, credentials);
+  const existingReservation = await getLibraryRoomReservationDetailInternal(client, reservationId);
+  if (!existingReservation.isEditable) {
+    throw new Error("현재 예약은 수정 가능한 상태가 아닙니다.");
+  }
+
+  const preview = await buildReservationPreview(
+    client,
+    {
+      ...input,
+      roomId: existingReservation.roomId,
+      companionCount: input.companionCount ?? existingReservation.companionCount
+    },
+    {
+      existingDetail: existingReservation
+    }
+  );
+
+  return {
+    user,
+    existingReservation,
+    preview
+  };
+}
+
+export async function updateLibraryRoomReservation(
+  client: MjuLibraryClient,
+  credentials: ResolvedLmsCredentials,
+  reservationId: number,
+  input: Omit<LibraryReservationRequestInput, "roomId">
+): Promise<{
+  user: LibraryUserInfo;
+  result: LibraryReservationMutationResult;
+}> {
+  const { user, existingReservation, preview } = await previewLibraryRoomReservationUpdate(
+    client,
+    credentials,
+    reservationId,
+    input
+  );
+  const roomDetail = await getLibraryStudyRoomDetailInternal(client, {
+    roomId: existingReservation.roomId,
+    date: input.date
+  });
+  const payload = buildReservationPayload(
+    preview,
+    {
+      ...input,
+      roomId: existingReservation.roomId
+    },
+    roomDetail
+  );
+
+  await client.putApiData(
+    `/${LIBRARY_HOMEPAGE_ID}/api/room-charges/${reservationId}`,
+    payload
+  );
+  const detail = await getLibraryRoomReservationDetailInternal(client, reservationId);
+
+  return {
+    user,
+    result: {
+      ...preview,
+      reservationId,
+      ...(detail.stateCode ? { stateCode: detail.stateCode } : {}),
+      ...(detail.stateLabel ? { stateLabel: detail.stateLabel } : {})
+    }
+  };
+}
+
+export async function previewLibraryRoomReservationCancel(
+  client: MjuLibraryClient,
+  credentials: ResolvedLmsCredentials,
+  reservationId: number
+): Promise<{
+  user: LibraryUserInfo;
+  reservation: LibraryRoomReservationDetail;
+}> {
+  const user = await ensureAuthenticated(client, credentials);
+  const reservation = await getLibraryRoomReservationDetailInternal(client, reservationId);
+  return { user, reservation };
+}
+
+export async function cancelLibraryRoomReservation(
+  client: MjuLibraryClient,
+  credentials: ResolvedLmsCredentials,
+  reservationId: number
+): Promise<{
+  user: LibraryUserInfo;
+  cancelledReservation: LibraryRoomReservationDetail;
+  remainingReservations: LibraryRoomReservationSummary[];
+}> {
+  const { user, reservation } = await previewLibraryRoomReservationCancel(
+    client,
+    credentials,
+    reservationId
+  );
+  await client.deleteApiData(`/${LIBRARY_HOMEPAGE_ID}/api/room-charges/${reservationId}`);
+  const remaining = await listLibraryRoomReservations(client, credentials);
+
+  return {
+    user,
+    cancelledReservation: reservation,
+    remainingReservations: remaining.reservations
   };
 }

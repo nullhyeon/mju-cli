@@ -103,6 +103,17 @@ export interface LibraryStudyRoomDetail {
   reservableEndTimes?: string[];
 }
 
+export interface LibraryCompanionInput {
+  name: string;
+  memberNo: string;
+}
+
+export interface LibraryCompanion {
+  id: number;
+  name: string;
+  memberNo: string;
+}
+
 export interface LibraryRoomReservationSummary {
   reservationId: number;
   roomId?: number;
@@ -116,6 +127,76 @@ export interface LibraryRoomReservationSummary {
   beginTime?: string;
   endTime?: string;
   companionCount: number;
+}
+
+export interface LibraryRoomReservationDetail {
+  reservationId: number;
+  roomId: number;
+  roomName: string;
+  campusName?: string;
+  campusAlias?: string;
+  buildingName?: string;
+  floorLabel?: string;
+  reservationTime: string;
+  beginTime: string;
+  endTime: string;
+  stateCode?: string;
+  stateLabel?: string;
+  useSection?: LibraryUseSection;
+  isEditable: boolean;
+  isCheckinable: boolean;
+  isReturnable: boolean;
+  isRenewable: boolean;
+  companionCount: number;
+  companions: LibraryCompanion[];
+  patronMessage?: string;
+  workerMessage?: string;
+  dateCreated?: string;
+  timeUnit?: string;
+  minDurationMinutes?: number;
+  maxDurationMinutes?: number;
+  minQuota?: number;
+  maxQuota?: number;
+  useCompanionRegistration: boolean;
+  useOutsiderRegistration: boolean;
+  equipmentIds: number[];
+  additionalInfoValues: Record<string, string>;
+}
+
+export interface LibraryReservationRequestInput {
+  roomId: number;
+  date: string;
+  beginTime: string;
+  endTime: string;
+  useSectionId?: number;
+  useSectionCode?: string;
+  useSectionName?: string;
+  companionCount?: number;
+  companions?: LibraryCompanionInput[];
+  patronMessage?: string;
+  equipmentIds?: number[];
+  additionalInfoValues?: Record<string, string>;
+}
+
+export interface LibraryReservationMutationPreview {
+  roomId: number;
+  roomName: string;
+  campusName?: string;
+  campusAlias?: string;
+  date: string;
+  beginTime: string;
+  endTime: string;
+  reservationTime: string;
+  useSection: LibraryUseSection;
+  companionCount: number;
+  resolvedCompanions: LibraryCompanion[];
+  approvalWarnings: string[];
+}
+
+export interface LibraryReservationMutationResult extends LibraryReservationMutationPreview {
+  reservationId: number;
+  stateCode?: string;
+  stateLabel?: string;
 }
 
 export interface LibrarySeatCounts {
