@@ -1,7 +1,8 @@
 import type { ResolvedLmsCredentials } from "../auth/types.js";
+import { getLibraryAuthContext } from "./auth-context.js";
 import { MjuLibraryClient } from "./client.js";
-import { listLibrarySeatReservations } from "./seat-services.js";
-import { listLibraryRoomReservations } from "./services.js";
+import { listLibrarySeatReservationsWithContext } from "./seat-services.js";
+import { listLibraryRoomReservationsWithContext } from "./services.js";
 import type {
   LibraryRoomReservationSummary,
   LibrarySeatReservationSummary,
@@ -97,9 +98,10 @@ export async function getLibraryMyReservations(
   seatReservations: LibrarySeatReservationSummary[];
   reservations: LibraryReservationTimelineItem[];
 }> {
+  const authContext = await getLibraryAuthContext(client, credentials);
   const [studyRoomResult, seatResult] = await Promise.all([
-    listLibraryRoomReservations(client, credentials),
-    listLibrarySeatReservations(client, credentials)
+    listLibraryRoomReservationsWithContext(client, authContext),
+    listLibrarySeatReservationsWithContext(client, authContext)
   ]);
 
   const user = ensureSameUser(studyRoomResult.user, seatResult.user);

@@ -1,4 +1,5 @@
 import type { ResolvedLmsCredentials } from "../auth/types.js";
+import { getLibraryAuthContext, type LibraryAuthContext } from "./auth-context.js";
 import {
   LIBRARY_BRANCH_GROUPS,
   LIBRARY_HOMEPAGE_ID,
@@ -661,30 +662,6 @@ function buildReservationTimeLabel(date: string, beginTime: string, endTime: str
   return `${date} ${beginTime} ~ ${endTime}`;
 }
 
-async function ensureAuthenticated(
-  client: MjuLibraryClient,
-  credentials: ResolvedLmsCredentials
-): Promise<LibraryUserInfo> {
-  const { myInfo } = await client.ensureAuthenticated<{
-    id?: number;
-    name?: string;
-    memberNo?: string;
-    branch?: RawBranch;
-  }>(credentials.userId, credentials.password);
-  const branchId = cleanNumber(myInfo.branch?.id);
-  const branchName = cleanString(myInfo.branch?.name);
-  const branchAlias = cleanString(myInfo.branch?.alias);
-
-  return {
-    id: ensureNumber(myInfo.id, "도서관 사용자 id 를 찾지 못했습니다."),
-    name: ensureString(myInfo.name, "도서관 사용자 이름을 찾지 못했습니다."),
-    memberNo: ensureString(myInfo.memberNo, "도서관 사용자 학번을 찾지 못했습니다."),
-    ...(branchId !== undefined ? { branchId } : {}),
-    ...(branchName !== undefined ? { branchName } : {}),
-    ...(branchAlias !== undefined ? { branchAlias } : {})
-  };
-}
-
 async function fetchUseSections(
   client: MjuLibraryClient,
   roomId: number
@@ -946,10 +923,10 @@ function buildReservationPayload(
 
 async function findMatchingRoomReservation(
   client: MjuLibraryClient,
-  credentials: ResolvedLmsCredentials,
+  authContext: LibraryAuthContext,
   input: LibraryReservationRequestInput
 ): Promise<LibraryRoomReservationSummary> {
-  const { reservations } = await listLibraryRoomReservations(client, credentials);
+  const { reservations } = await listLibraryRoomReservationsWithContext(client, authContext);
   const expectedBeginTime = `${input.date} ${input.beginTime}:00`;
   const expectedEndTime = `${input.date} ${input.endTime}:00`;
   const matched = reservations
@@ -979,7 +956,7 @@ export async function listLibraryStudyRooms(
   user: LibraryUserInfo;
   campuses: LibraryCampusAvailability[];
 }> {
-  const user = await ensureAuthenticated(client, credentials);
+  const authContext = await getLibraryAuthContext(client, credentials);
   const campusSelection = resolveCampusKey(options.campus);
   const campuses: LibraryCampusKey[] =
     campusSelection === "all" ? ["nature", "humanities"] : [campusSelection];
@@ -1013,7 +990,7 @@ export async function listLibraryStudyRooms(
   }
 
   return {
-    user,
+    user: authContext.user,
     campuses: results
   };
 }
@@ -1030,21 +1007,20 @@ export async function getLibraryStudyRoomDetail(
   user: LibraryUserInfo;
   room: LibraryStudyRoomDetail;
 }> {
-  const user = await ensureAuthenticated(client, credentials);
+  const authContext = await getLibraryAuthContext(client, credentials);
   return {
-    user,
+    user: authContext.user,
     room: await getLibraryStudyRoomDetailInternal(client, options)
   };
 }
 
-export async function listLibraryRoomReservations(
+export async function listLibraryRoomReservationsWithContext(
   client: MjuLibraryClient,
-  credentials: ResolvedLmsCredentials
+  authContext: LibraryAuthContext
 ): Promise<{
   user: LibraryUserInfo;
   reservations: LibraryRoomReservationSummary[];
 }> {
-  const user = await ensureAuthenticated(client, credentials);
   let raw: RawListResponse<RawRoomChargeSummary>;
   try {
     raw = await client.getApiData<RawListResponse<RawRoomChargeSummary>>(
@@ -1059,9 +1035,32 @@ export async function listLibraryRoomReservations(
   }
 
   return {
-    user,
+    user: authContext.user,
     reservations: (raw.list ?? []).map(mapRoomReservationSummary)
   };
+}
+
+export async function listLibraryRoomReservations(
+  client: MjuLibraryClient,
+  credentials: ResolvedLmsCredentials
+): Promise<{
+  user: LibraryUserInfo;
+  reservations: LibraryRoomReservationSummary[];
+}> {
+  const authContext = await getLibraryAuthContext(client, credentials);
+  return listLibraryRoomReservationsWithContext(client, authContext);
+}
+
+async function previewLibraryRoomReservationWithContext(
+  client: MjuLibraryClient,
+  authContext: LibraryAuthContext,
+  input: LibraryReservationRequestInput
+): Promise<{
+  user: LibraryUserInfo;
+  preview: LibraryReservationMutationPreview;
+}> {
+  const preview = await buildReservationPreview(client, input);
+  return { user: authContext.user, preview };
 }
 
 export async function previewLibraryRoomReservation(
@@ -1072,9 +1071,8 @@ export async function previewLibraryRoomReservation(
   user: LibraryUserInfo;
   preview: LibraryReservationMutationPreview;
 }> {
-  const user = await ensureAuthenticated(client, credentials);
-  const preview = await buildReservationPreview(client, input);
-  return { user, preview };
+  const authContext = await getLibraryAuthContext(client, credentials);
+  return previewLibraryRoomReservationWithContext(client, authContext, input);
 }
 
 export async function createLibraryRoomReservation(
@@ -1085,7 +1083,7 @@ export async function createLibraryRoomReservation(
   user: LibraryUserInfo;
   result: LibraryReservationMutationResult;
 }> {
-  const user = await ensureAuthenticated(client, credentials);
+  const authContext = await getLibraryAuthContext(client, credentials);
   const preview = await buildReservationPreview(client, input);
   const roomDetail = await getLibraryStudyRoomDetailInternal(client, {
     roomId: input.roomId,
@@ -1098,11 +1096,11 @@ export async function createLibraryRoomReservation(
   );
   const reservationId =
     cleanNumber(created?.id) ??
-    (await findMatchingRoomReservation(client, credentials, input)).reservationId;
+    (await findMatchingRoomReservation(client, authContext, input)).reservationId;
   const detail = await getLibraryRoomReservationDetailInternal(client, reservationId);
 
   return {
-    user,
+    user: authContext.user,
     result: {
       ...preview,
       reservationId,
@@ -1112,9 +1110,9 @@ export async function createLibraryRoomReservation(
   };
 }
 
-export async function previewLibraryRoomReservationUpdate(
+async function previewLibraryRoomReservationUpdateWithContext(
   client: MjuLibraryClient,
-  credentials: ResolvedLmsCredentials,
+  authContext: LibraryAuthContext,
   reservationId: number,
   input: Omit<LibraryReservationRequestInput, "roomId">
 ): Promise<{
@@ -1122,7 +1120,6 @@ export async function previewLibraryRoomReservationUpdate(
   existingReservation: LibraryRoomReservationDetail;
   preview: LibraryReservationMutationPreview;
 }> {
-  const user = await ensureAuthenticated(client, credentials);
   const existingReservation = await getLibraryRoomReservationDetailInternal(client, reservationId);
   if (!existingReservation.isEditable) {
     throw new Error("현재 예약은 수정 가능한 상태가 아닙니다.");
@@ -1141,10 +1138,29 @@ export async function previewLibraryRoomReservationUpdate(
   );
 
   return {
-    user,
+    user: authContext.user,
     existingReservation,
     preview
   };
+}
+
+export async function previewLibraryRoomReservationUpdate(
+  client: MjuLibraryClient,
+  credentials: ResolvedLmsCredentials,
+  reservationId: number,
+  input: Omit<LibraryReservationRequestInput, "roomId">
+): Promise<{
+  user: LibraryUserInfo;
+  existingReservation: LibraryRoomReservationDetail;
+  preview: LibraryReservationMutationPreview;
+}> {
+  const authContext = await getLibraryAuthContext(client, credentials);
+  return previewLibraryRoomReservationUpdateWithContext(
+    client,
+    authContext,
+    reservationId,
+    input
+  );
 }
 
 export async function updateLibraryRoomReservation(
@@ -1156,9 +1172,10 @@ export async function updateLibraryRoomReservation(
   user: LibraryUserInfo;
   result: LibraryReservationMutationResult;
 }> {
-  const { user, existingReservation, preview } = await previewLibraryRoomReservationUpdate(
+  const authContext = await getLibraryAuthContext(client, credentials);
+  const { existingReservation, preview } = await previewLibraryRoomReservationUpdateWithContext(
     client,
-    credentials,
+    authContext,
     reservationId,
     input
   );
@@ -1182,7 +1199,7 @@ export async function updateLibraryRoomReservation(
   const detail = await getLibraryRoomReservationDetailInternal(client, reservationId);
 
   return {
-    user,
+    user: authContext.user,
     result: {
       ...preview,
       reservationId,
@@ -1190,6 +1207,18 @@ export async function updateLibraryRoomReservation(
       ...(detail.stateLabel ? { stateLabel: detail.stateLabel } : {})
     }
   };
+}
+
+async function previewLibraryRoomReservationCancelWithContext(
+  client: MjuLibraryClient,
+  authContext: LibraryAuthContext,
+  reservationId: number
+): Promise<{
+  user: LibraryUserInfo;
+  reservation: LibraryRoomReservationDetail;
+}> {
+  const reservation = await getLibraryRoomReservationDetailInternal(client, reservationId);
+  return { user: authContext.user, reservation };
 }
 
 export async function previewLibraryRoomReservationCancel(
@@ -1200,9 +1229,8 @@ export async function previewLibraryRoomReservationCancel(
   user: LibraryUserInfo;
   reservation: LibraryRoomReservationDetail;
 }> {
-  const user = await ensureAuthenticated(client, credentials);
-  const reservation = await getLibraryRoomReservationDetailInternal(client, reservationId);
-  return { user, reservation };
+  const authContext = await getLibraryAuthContext(client, credentials);
+  return previewLibraryRoomReservationCancelWithContext(client, authContext, reservationId);
 }
 
 export async function cancelLibraryRoomReservation(
@@ -1214,16 +1242,17 @@ export async function cancelLibraryRoomReservation(
   cancelledReservation: LibraryRoomReservationDetail;
   remainingReservations: LibraryRoomReservationSummary[];
 }> {
-  const { user, reservation } = await previewLibraryRoomReservationCancel(
+  const authContext = await getLibraryAuthContext(client, credentials);
+  const { reservation } = await previewLibraryRoomReservationCancelWithContext(
     client,
-    credentials,
+    authContext,
     reservationId
   );
   await client.deleteApiData(`/${LIBRARY_HOMEPAGE_ID}/api/room-charges/${reservationId}`);
-  const remaining = await listLibraryRoomReservations(client, credentials);
+  const remaining = await listLibraryRoomReservationsWithContext(client, authContext);
 
   return {
-    user,
+    user: authContext.user,
     cancelledReservation: reservation,
     remainingReservations: remaining.reservations
   };
