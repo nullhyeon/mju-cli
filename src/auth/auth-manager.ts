@@ -1,24 +1,17 @@
-import fs from "node:fs/promises";
-
-import { resolveLibraryRuntimeConfig } from "../library/config.js";
 import type { LmsRuntimeConfig } from "../lms/config.js";
 import type { LoginSnapshotResult } from "../lms/types.js";
 import { MjuLmsSsoClient } from "../lms/sso-client.js";
-import { resolveMsiRuntimeConfig } from "../msi/config.js";
-import { resolveUcheckRuntimeConfig } from "../ucheck/config.js";
-import { AuthProfileStore } from "./profile-store.js";
-import { buildCredentialTarget, type PasswordVault } from "./password-vault.js";
+import type { PasswordVault } from "./password-vault.js";
+import { CrossServiceSessionCleaner } from "./cross-service-session-cleaner.js";
+import { LmsLoginVerifier } from "./lms-login-verifier.js";
+import { createDefaultPasswordVault, StoredCredentialService } from "./stored-credential-service.js";
 import type {
   AuthStatus,
   ForgetResult,
   LoginStoreResult,
   LogoutResult,
-  ResolvedLmsCredentials,
-  StoredAuthMode,
-  StoredAuthProfile
+  ResolvedLmsCredentials
 } from "./types.js";
-import { MacOsKeychainVault } from "./macos-keychain-vault.js";
-import { WindowsCredentialVault } from "./windows-credential-vault.js";
 
 function clean(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -34,88 +27,28 @@ export interface StoredLoginResult extends LoginStoreResult {
   snapshot: LoginSnapshotResult;
 }
 
-class UnsupportedPasswordVault implements PasswordVault {
-  readonly authMode = "unsupported" as const;
-
-  async savePassword(): Promise<void> {
-    throw new Error("현재 운영체제에서는 저장 로그인을 지원하지 않습니다.");
-  }
-
-  async getPassword(): Promise<string | null> {
-    throw new Error("현재 운영체제에서는 저장된 비밀번호 읽기를 지원하지 않습니다.");
-  }
-
-  async deletePassword(): Promise<boolean> {
-    return false;
-  }
-
-  async hasPassword(): Promise<boolean> {
-    return false;
-  }
-}
-
-function createDefaultPasswordVault(): PasswordVault {
-  if (process.platform === "win32") {
-    return new WindowsCredentialVault();
-  }
-
-  if (process.platform === "darwin") {
-    return new MacOsKeychainVault();
-  }
-
-  return new UnsupportedPasswordVault();
-}
-
-function resolveStoredAuthMode(vault: PasswordVault): StoredAuthMode {
-  if (vault.authMode === "unsupported") {
-    throw new Error("현재 운영체제에서는 저장 로그인 비밀번호 보관소를 지원하지 않습니다.");
-  }
-
-  return vault.authMode;
-}
-
-function getCrossServiceSessionFiles(appDataDir: string): string[] {
-  return [
-    resolveLibraryRuntimeConfig({ appDataDir }).sessionFile,
-    resolveMsiRuntimeConfig({ appDataDir }).sessionFile,
-    resolveUcheckRuntimeConfig({ appDataDir }).sessionFile
-  ];
-}
-
 export class AuthManager {
-  private readonly profileStore: AuthProfileStore;
-  private readonly passwordVault: PasswordVault;
-  private readonly clientFactory: () => MjuLmsSsoClient;
+  private readonly storedCredentialService: StoredCredentialService;
+  private readonly loginVerifier: LmsLoginVerifier;
+  private readonly sessionCleaner: CrossServiceSessionCleaner;
 
   constructor(
     private readonly config: LmsRuntimeConfig,
     dependencies: AuthManagerDependencies = {}
   ) {
-    this.profileStore = new AuthProfileStore(config.profileFile);
-    this.passwordVault = dependencies.passwordVault ?? createDefaultPasswordVault();
-    this.clientFactory = dependencies.clientFactory ?? (() => new MjuLmsSsoClient(config));
+    const passwordVault = dependencies.passwordVault ?? createDefaultPasswordVault();
+
+    this.storedCredentialService = new StoredCredentialService({
+      profileFile: config.profileFile,
+      credentialServiceName: config.credentialServiceName,
+      passwordVault
+    });
+    this.loginVerifier = new LmsLoginVerifier(config, dependencies.clientFactory);
+    this.sessionCleaner = new CrossServiceSessionCleaner(config.appDataDir);
   }
 
   async resolveCredentials(): Promise<ResolvedLmsCredentials> {
-    const profile = await this.profileStore.load();
-    if (!profile) {
-      throw new Error(
-        "저장된 로그인 정보가 없습니다. `mju auth login --id YOUR_ID --password YOUR_PASSWORD` 로 먼저 로그인해주세요."
-      );
-    }
-
-    const password = await this.passwordVault.getPassword(this.getCredentialTarget(profile.userId));
-    if (password === null) {
-      throw new Error(
-        "저장된 비밀번호를 읽지 못했습니다. `mju auth login --id YOUR_ID --password YOUR_PASSWORD` 로 다시 로그인해주세요."
-      );
-    }
-
-    return {
-      userId: profile.userId,
-      password,
-      source: "os-store"
-    };
+    return this.storedCredentialService.resolveCredentials();
   }
 
   async loginAndStore(userId: string, password: string): Promise<StoredLoginResult> {
@@ -126,11 +59,10 @@ export class AuthManager {
       throw new Error("아이디와 비밀번호를 모두 제공해야 합니다.");
     }
 
-    const existingProfile = await this.profileStore.load();
-    const snapshot = await this.clientFactory().authenticateAndSnapshot(
+    const existingProfile = await this.storedCredentialService.loadProfile();
+    const snapshot = await this.loginVerifier.authenticateAndSnapshot(
       normalizedUserId,
-      normalizedPassword,
-      { preferSavedSession: false }
+      normalizedPassword
     );
 
     if (!snapshot.loggedIn) {
@@ -138,61 +70,32 @@ export class AuthManager {
     }
 
     if (existingProfile && existingProfile.userId !== normalizedUserId) {
-      await this.passwordVault.deletePassword(this.getCredentialTarget(existingProfile.userId));
-      await removeFiles(getCrossServiceSessionFiles(this.config.appDataDir));
+      await this.storedCredentialService.deletePasswordForUser(existingProfile.userId);
+      await this.sessionCleaner.clearCrossServiceSessions();
     }
 
-    await this.passwordVault.savePassword(
-      this.getCredentialTarget(normalizedUserId),
+    const storedLogin = await this.storedCredentialService.saveLogin(
       normalizedUserId,
-      normalizedPassword
+      normalizedPassword,
+      existingProfile
     );
-
-    const now = new Date().toISOString();
-    const profile: StoredAuthProfile = {
-      userId: normalizedUserId,
-      authMode: resolveStoredAuthMode(this.passwordVault),
-      createdAt:
-        existingProfile?.userId === normalizedUserId ? existingProfile.createdAt : now,
-      updatedAt: now,
-      lastLoginAt: now
-    };
-
-    await this.profileStore.save(profile);
 
     return {
       snapshot,
-      profile,
-      profileFile: this.config.profileFile,
-      credentialTarget: this.getCredentialTarget(normalizedUserId),
+      ...storedLogin,
       sessionFile: this.config.sessionFile
     };
   }
 
   async status(): Promise<AuthStatus> {
-    const profile = await this.profileStore.load();
-    const sessionFileExists = await fileExists(this.config.sessionFile);
-    const credentialTarget = profile ? this.getCredentialTarget(profile.userId) : undefined;
-
-    return {
+    return this.storedCredentialService.status({
       appDataDir: this.config.appDataDir,
-      profileFile: this.config.profileFile,
-      sessionFile: this.config.sessionFile,
-      credentialServiceName: this.config.credentialServiceName,
-      ...(credentialTarget ? { credentialTarget } : {}),
-      profileExists: profile !== null,
-      ...(profile ? { storedUserId: profile.userId } : {}),
-      ...(profile ? { authMode: profile.authMode } : {}),
-      passwordStored:
-        credentialTarget !== undefined
-          ? await this.passwordVault.hasPassword(credentialTarget)
-          : false,
-      sessionFileExists
-    };
+      sessionFile: this.config.sessionFile
+    });
   }
 
   async logout(): Promise<LogoutResult> {
-    const deletedSession = await this.clientFactory().clearSavedSession();
+    const deletedSession = await this.loginVerifier.clearSavedSession();
 
     return {
       sessionFile: this.config.sessionFile,
@@ -201,52 +104,16 @@ export class AuthManager {
   }
 
   async forget(): Promise<ForgetResult> {
-    const profile = await this.profileStore.load();
     const logoutResult = await this.logout();
-    const deletedProfile = await this.profileStore.clear();
-    const deletedPassword = profile
-      ? await this.passwordVault.deletePassword(this.getCredentialTarget(profile.userId))
-      : false;
+    const storedLogin = await this.storedCredentialService.forgetStoredLogin();
 
     return {
       ...logoutResult,
-      profileFile: this.config.profileFile,
-      deletedProfile,
-      deletedPassword,
-      ...(profile ? { forgottenUserId: profile.userId } : {})
+      ...storedLogin
     };
   }
 
   getCredentialTarget(userId: string): string {
-    return buildCredentialTarget(this.config.credentialServiceName, userId);
-  }
-}
-
-async function removeFiles(filePaths: string[]): Promise<void> {
-  await Promise.all(
-    filePaths.map(async (filePath) => {
-      try {
-        await fs.rm(filePath);
-      } catch (error: unknown) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          return;
-        }
-
-        throw error;
-      }
-    })
-  );
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch (error: unknown) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return false;
-    }
-
-    throw error;
+    return this.storedCredentialService.getCredentialTarget(userId);
   }
 }

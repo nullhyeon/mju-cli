@@ -16,7 +16,7 @@
     "docs:skills": "node scripts/generate-skills-doc.mjs",
     "dev": "tsx src/main.ts",
     "start": "node dist/main.js",
-    "test": "node --import tsx --test test/session-stores.test.ts test/output-table-formatters.test.ts test/library-auth-context.test.ts"
+    "test": "node --import tsx --test test/session-stores.test.ts test/output-table-formatters.test.ts test/library-auth-context.test.ts test/auth-manager.test.ts"
   },
   "dependencies": {
     "cheerio": "^1.2.0",
