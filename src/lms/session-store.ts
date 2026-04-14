@@ -5,21 +5,34 @@ import { CookieJar } from "tough-cookie";
 
 interface PersistedSessionPayload {
   savedAt: string;
+  userId?: string;
   cookies: ReturnType<CookieJar["serializeSync"]>;
+}
+
+export interface LoadedCookieSession {
+  userId: string;
+  cookieJar: CookieJar;
 }
 
 export class SessionStore {
   constructor(private readonly filePath: string) {}
 
-  async load(): Promise<CookieJar | null> {
+  async load(expectedUserId?: string): Promise<LoadedCookieSession | null> {
     try {
       const raw = await fs.readFile(this.filePath, "utf8");
       const payload = JSON.parse(raw) as PersistedSessionPayload;
-      if (!payload.cookies) {
+      if (!payload.cookies || !payload.userId) {
         return null;
       }
 
-      return CookieJar.deserializeSync(payload.cookies);
+      if (expectedUserId && payload.userId !== expectedUserId) {
+        return null;
+      }
+
+      return {
+        userId: payload.userId,
+        cookieJar: CookieJar.deserializeSync(payload.cookies)
+      };
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return null;
@@ -29,9 +42,10 @@ export class SessionStore {
     }
   }
 
-  async save(cookieJar: CookieJar): Promise<void> {
+  async save(cookieJar: CookieJar, userId: string): Promise<void> {
     const payload: PersistedSessionPayload = {
       savedAt: new Date().toISOString(),
+      userId,
       cookies: cookieJar.serializeSync()
     };
 

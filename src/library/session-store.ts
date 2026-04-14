@@ -6,11 +6,14 @@ import type { LibrarySessionPayload } from "./types.js";
 export class LibrarySessionStore {
   constructor(private readonly filePath: string) {}
 
-  async load(): Promise<LibrarySessionPayload | null> {
+  async load(expectedUserId?: string): Promise<LibrarySessionPayload | null> {
     try {
       const raw = await fs.readFile(this.filePath, "utf8");
       const payload = JSON.parse(raw) as LibrarySessionPayload;
-      if (!payload.accessToken) {
+      if (!payload.accessToken || !payload.userId) {
+        return null;
+      }
+      if (expectedUserId && payload.userId !== expectedUserId) {
         return null;
       }
       return payload;

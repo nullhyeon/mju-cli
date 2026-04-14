@@ -9,6 +9,7 @@ export interface LibraryApiEnvelope<T> {
 
 export interface LibrarySessionPayload {
   savedAt: string;
+  userId: string;
   accessToken: string;
 }
 

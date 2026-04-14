@@ -1,8 +1,11 @@
 import fs from "node:fs/promises";
 
+import { resolveLibraryRuntimeConfig } from "../library/config.js";
 import type { LmsRuntimeConfig } from "../lms/config.js";
 import type { LoginSnapshotResult } from "../lms/types.js";
 import { MjuLmsSsoClient } from "../lms/sso-client.js";
+import { resolveMsiRuntimeConfig } from "../msi/config.js";
+import { resolveUcheckRuntimeConfig } from "../ucheck/config.js";
 import { AuthProfileStore } from "./profile-store.js";
 import { buildCredentialTarget, type PasswordVault } from "./password-vault.js";
 import type {
@@ -71,6 +74,14 @@ function resolveStoredAuthMode(vault: PasswordVault): StoredAuthMode {
   return vault.authMode;
 }
 
+function getCrossServiceSessionFiles(appDataDir: string): string[] {
+  return [
+    resolveLibraryRuntimeConfig({ appDataDir }).sessionFile,
+    resolveMsiRuntimeConfig({ appDataDir }).sessionFile,
+    resolveUcheckRuntimeConfig({ appDataDir }).sessionFile
+  ];
+}
+
 export class AuthManager {
   private readonly profileStore: AuthProfileStore;
   private readonly passwordVault: PasswordVault;
@@ -128,6 +139,7 @@ export class AuthManager {
 
     if (existingProfile && existingProfile.userId !== normalizedUserId) {
       await this.passwordVault.deletePassword(this.getCredentialTarget(existingProfile.userId));
+      await removeFiles(getCrossServiceSessionFiles(this.config.appDataDir));
     }
 
     await this.passwordVault.savePassword(
@@ -208,6 +220,22 @@ export class AuthManager {
   getCredentialTarget(userId: string): string {
     return buildCredentialTarget(this.config.credentialServiceName, userId);
   }
+}
+
+async function removeFiles(filePaths: string[]): Promise<void> {
+  await Promise.all(
+    filePaths.map(async (filePath) => {
+      try {
+        await fs.rm(filePath);
+      } catch (error: unknown) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return;
+        }
+
+        throw error;
+      }
+    })
+  );
 }
 
 async function fileExists(filePath: string): Promise<boolean> {

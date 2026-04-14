@@ -60,13 +60,13 @@ export class MjuUcheckClient {
     this.http = this.buildHttpClient();
   }
 
-  async restoreSavedSession(): Promise<boolean> {
-    const restored = await this.sessionStore.load();
+  async restoreSavedSession(userId: string): Promise<boolean> {
+    const restored = await this.sessionStore.load(userId);
     if (!restored) {
       return false;
     }
 
-    this.cookieJar = restored;
+    this.cookieJar = restored.cookieJar;
     this.http = this.buildHttpClient();
     return true;
   }
@@ -186,7 +186,7 @@ export class MjuUcheckClient {
     password: string,
     options: { preferSavedSession?: boolean } = {}
   ): Promise<{ mainResponse: DecodedResponse; usedSavedSession: boolean }> {
-    if (options.preferSavedSession !== false && (await this.restoreSavedSession())) {
+    if (options.preferSavedSession !== false && (await this.restoreSavedSession(userId))) {
       const mainFromSavedSession = await this.fetchMainPage();
       if (looksLoggedIn(mainFromSavedSession)) {
         return {
@@ -200,7 +200,7 @@ export class MjuUcheckClient {
 
     const mainResponse = await this.login(userId, password);
     if (looksLoggedIn(mainResponse)) {
-      await this.sessionStore.save(this.cookieJar);
+      await this.sessionStore.save(this.cookieJar, userId);
     } else {
       await this.clearSavedSession();
     }

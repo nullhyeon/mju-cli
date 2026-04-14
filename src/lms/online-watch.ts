@@ -88,16 +88,19 @@ function createWatchEventLog(startedMs: number): WatchEventLog {
   };
 }
 
-async function loadContextCookies(sessionFile: string): Promise<ContextCookie[]> {
-  const cookieJar = await new SessionStore(sessionFile).load();
-  if (!cookieJar) {
+async function loadContextCookies(
+  sessionFile: string,
+  userId: string
+): Promise<ContextCookie[]> {
+  const session = await new SessionStore(sessionFile).load(userId);
+  if (!session) {
     throw new CliError(
       "저장된 LMS 세션을 찾지 못했습니다. `mju auth login --id YOUR_ID --password YOUR_PASSWORD` 로 먼저 로그인해주세요."
     );
   }
 
   const now = Date.now();
-  const serialized = cookieJar.serializeSync();
+  const serialized = session.cookieJar.serializeSync();
   if (!serialized) {
     throw new CliError("저장된 LMS 세션 쿠키를 읽지 못했습니다.");
   }
@@ -429,7 +432,8 @@ async function exitLearning(page: Page, frame: Frame): Promise<boolean> {
 
 async function createBrowserContext(
   config: LmsRuntimeConfig,
-  headless: boolean
+  headless: boolean,
+  userId: string
 ): Promise<{
   browser: Awaited<ReturnType<Awaited<ReturnType<typeof loadPlaywright>>["chromium"]["launch"]>>;
   context: BrowserContext;
@@ -440,7 +444,7 @@ async function createBrowserContext(
     userAgent: config.userAgent,
     viewport: { width: 1440, height: 900 }
   });
-  await context.addCookies(await loadContextCookies(config.sessionFile));
+  await context.addCookies(await loadContextCookies(config.sessionFile, userId));
 
   return { browser, context };
 }
@@ -469,7 +473,7 @@ export async function watchCourseOnlineItem(
   });
   const resolvedItem = resolveOnlineItem(detail.items, options);
   const eventLog = createWatchEventLog(startedMs);
-  const { browser, context } = await createBrowserContext(config, headless);
+  const { browser, context } = await createBrowserContext(config, headless, options.userId);
   const page = await context.newPage();
 
   try {

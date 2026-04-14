@@ -100,8 +100,8 @@ export class MjuLibraryClient {
     return this.parseJsonEnvelope<T>(response, url);
   }
 
-  async restoreSavedSession(): Promise<boolean> {
-    const session = await this.sessionStore.load();
+  async restoreSavedSession(userId: string): Promise<boolean> {
+    const session = await this.sessionStore.load(userId);
     if (!session?.accessToken) {
       return false;
     }
@@ -115,9 +115,10 @@ export class MjuLibraryClient {
     return this.sessionStore.remove();
   }
 
-  private async saveSession(accessToken: string): Promise<void> {
+  private async saveSession(accessToken: string, userId: string): Promise<void> {
     const payload: LibrarySessionPayload = {
       savedAt: new Date().toISOString(),
+      userId,
       accessToken
     };
 
@@ -148,7 +149,7 @@ export class MjuLibraryClient {
       throw formatApiError("도서관 로그인에 실패했습니다.", response);
     }
 
-    await this.saveSession(accessToken);
+    await this.saveSession(accessToken, userId);
     return accessToken;
   }
 
@@ -169,7 +170,7 @@ export class MjuLibraryClient {
     password: string,
     options: { preferSavedSession?: boolean } = {}
   ): Promise<{ myInfo: T; usedSavedSession: boolean }> {
-    if (options.preferSavedSession !== false && (await this.restoreSavedSession())) {
+    if (options.preferSavedSession !== false && (await this.restoreSavedSession(userId))) {
       const myInfo = await this.fetchMyInfo<T>();
       if (myInfo) {
         return { myInfo, usedSavedSession: true };
