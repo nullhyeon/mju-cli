@@ -1,4 +1,5 @@
 import type { OutputFormat } from "../types.js";
+import { printGenericTable, printKnownTableFormat } from "./table-formatters.js";
 
 export function printData(data: unknown, format: OutputFormat): void {
   switch (format) {
@@ -12,15 +13,9 @@ export function printData(data: unknown, format: OutputFormat): void {
 }
 
 function printTableish(data: unknown): void {
-  if (Array.isArray(data)) {
-    console.table(data);
+  if (printKnownTableFormat(data)) {
     return;
   }
 
-  if (data && typeof data === "object") {
-    console.table([data]);
-    return;
-  }
-
-  console.log(String(data));
+  printGenericTable(data);
 }
