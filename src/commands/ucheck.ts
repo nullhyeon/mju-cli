@@ -9,7 +9,7 @@ import { resolveUcheckRuntimeConfig } from "../ucheck/config.js";
 import {
   getUcheckAccountInfo,
   getUcheckCourseAttendance,
-  listUcheckLectures
+  getUcheckLectureContext
 } from "../ucheck/services.js";
 
 function parseOptionalInt(value: string | undefined, label: string): number | undefined {
@@ -77,15 +77,17 @@ export function createUcheckCommand(getGlobals: () => GlobalOptions): Command {
     .action(async (options: { year?: string; term?: string }) => {
       const globals = getGlobals();
       const { client, credentials } = await createUcheckClientWithCredentials(globals);
-      const account = await getUcheckAccountInfo(client, credentials);
-      const year = parseOptionalInt(options.year, "year") ?? account.baseYearTerm.lectureYear;
-      const term = parseOptionalInt(options.term, "term") ?? account.baseYearTerm.lectureTerm;
-      const result = await listUcheckLectures(client, credentials, year, term);
+      const year = parseOptionalInt(options.year, "year");
+      const term = parseOptionalInt(options.term, "term");
+      const context = await getUcheckLectureContext(client, credentials, {
+        ...(year !== undefined ? { year } : {}),
+        ...(term !== undefined ? { term } : {})
+      });
       printData(
         {
-          year,
-          term,
-          lectures: result
+          year: context.year,
+          term: context.term,
+          lectures: context.lectures
         },
         globals.format
       );

@@ -47,7 +47,7 @@ function extractFrontmatter(content) {
 }
 
 function extractField(frontmatter, fieldName) {
-  const regex = new RegExp(`(?:^|\\n)${fieldName}:\\s*(.+)`);
+  const regex = new RegExp(`(?:^|\\n)\\s*${fieldName}:\\s*(.+)`);
   const match = frontmatter.match(regex);
   return match ? cleanYamlScalar(match[1]) : undefined;
 }

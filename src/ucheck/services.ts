@@ -100,6 +100,13 @@ interface ParsedScheduleSegment {
   classroom?: string;
 }
 
+export interface UcheckLectureContext {
+  accountInfo: UcheckAccountInfo;
+  year: number;
+  term: number;
+  lectures: UcheckLectureSummary[];
+}
+
 const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 
 const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
@@ -286,6 +293,12 @@ export async function getUcheckAccountInfo(
   credentials: ResolvedLmsCredentials
 ): Promise<UcheckAccountInfo> {
   await ensureAuthenticated(client, credentials);
+  return fetchUcheckAccountInfo(client);
+}
+
+async function fetchUcheckAccountInfo(
+  client: MjuUcheckClient
+): Promise<UcheckAccountInfo> {
   const response = await client.postForm(UCHECK_ACCOUNT_INFO_URL, {});
   const raw = parseJsonEnvelope<UcheckAccountInfoRaw>(response.text, "UCheck 계정 정보");
   const lectureYear = raw.base_yearterm?.lecture_year;
@@ -323,6 +336,14 @@ export async function listUcheckLectures(
   term: number
 ): Promise<UcheckLectureSummary[]> {
   await ensureAuthenticated(client, credentials);
+  return fetchUcheckLectures(client, year, term);
+}
+
+async function fetchUcheckLectures(
+  client: MjuUcheckClient,
+  year: number,
+  term: number
+): Promise<UcheckLectureSummary[]> {
   const response = await client.postJson(UCHECK_LECTURE_LIST_URL, {
     lecture_year: year,
     lecture_term: term
@@ -356,6 +377,28 @@ export async function listUcheckLectures(
       } satisfies UcheckLectureSummary;
     })
     .filter((lecture): lecture is UcheckLectureSummary => lecture !== undefined);
+}
+
+export async function getUcheckLectureContext(
+  client: MjuUcheckClient,
+  credentials: ResolvedLmsCredentials,
+  options: {
+    year?: number;
+    term?: number;
+  } = {}
+): Promise<UcheckLectureContext> {
+  await ensureAuthenticated(client, credentials);
+  const accountInfo = await fetchUcheckAccountInfo(client);
+  const year = options.year ?? accountInfo.baseYearTerm.lectureYear;
+  const term = options.term ?? accountInfo.baseYearTerm.lectureTerm;
+  const lectures = await fetchUcheckLectures(client, year, term);
+
+  return {
+    accountInfo,
+    year,
+    term,
+    lectures
+  };
 }
 
 function resolveLectureFromList(
@@ -473,11 +516,11 @@ export async function getUcheckCourseAttendance(
   credentials: ResolvedLmsCredentials,
   options: ResolveLectureOptions
 ): Promise<UcheckCourseAttendanceResult> {
-  const accountInfo = await getUcheckAccountInfo(client, credentials);
-  const year = options.year ?? accountInfo.baseYearTerm.lectureYear;
-  const term = options.term ?? accountInfo.baseYearTerm.lectureTerm;
-  const lectures = await listUcheckLectures(client, credentials, year, term);
-  const resolved = resolveLectureFromList(lectures, options);
+  const context = await getUcheckLectureContext(client, credentials, {
+    ...(options.year !== undefined ? { year: options.year } : {}),
+    ...(options.term !== undefined ? { term: options.term } : {})
+  });
+  const resolved = resolveLectureFromList(context.lectures, options);
   const itemsResponse = await client.postJson(UCHECK_ATTENDANCE_ITEMS_URL, {
     lecture_no: resolved.lecture.lectureNo
   });
@@ -493,7 +536,7 @@ export async function getUcheckCourseAttendance(
     "UCheck 출결 로그"
   );
 
-  const studentNo = accountInfo.studentNo ?? credentials.userId;
+  const studentNo = context.accountInfo.studentNo ?? credentials.userId;
   const myStudent = items.student?.find((row) => row.student_no === studentNo);
 
   if (!myStudent) {
@@ -553,8 +596,8 @@ export async function getUcheckCourseAttendance(
     }) ?? [];
 
   return {
-    ...(accountInfo.studentNo ? { studentNo: accountInfo.studentNo } : {}),
-    studentName: myStudent.student_nm ?? accountInfo.name,
+    ...(context.accountInfo.studentNo ? { studentNo: context.accountInfo.studentNo } : {}),
+    studentName: myStudent.student_nm ?? context.accountInfo.name,
     resolvedBy: resolved.resolvedBy,
     course: resolved.lecture,
     summary,
