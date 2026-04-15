@@ -1,0 +1,21 @@
+{
+  "result_code": "success",
+  "data": [
+    {
+      "lecture_week": 1,
+      "class_no": 1,
+      "student_no": "60123456",
+      "attend_type": "1",
+      "attend_date": "20260413090130",
+      "out_date": "20260413101600"
+    },
+    {
+      "lecture_week": 1,
+      "class_no": 2,
+      "student_no": "60123456",
+      "attend_type": "2",
+      "attend_date": "20260415091000",
+      "out_date": null
+    }
+  ]
+}

@@ -100,6 +100,15 @@ interface ParsedScheduleSegment {
   classroom?: string;
 }
 
+export interface UcheckAttendanceParseInput {
+  accountInfo: UcheckAccountInfo;
+  lecture: UcheckLectureSummary;
+  resolvedBy: UcheckCourseAttendanceResult["resolvedBy"];
+  userId: string;
+  itemsText: string;
+  logsText: string;
+}
+
 export interface UcheckLectureContext {
   accountInfo: UcheckAccountInfo;
   year: number;
@@ -535,21 +544,34 @@ export async function getUcheckCourseAttendance(
   const logsResponse = await client.postJson(UCHECK_ATTENDANCE_LOGS_URL, {
     lecture_no: resolved.lecture.lectureNo
   });
+  return parseUcheckCourseAttendanceResponse({
+    accountInfo: context.accountInfo,
+    lecture: resolved.lecture,
+    resolvedBy: resolved.resolvedBy,
+    userId: credentials.userId,
+    itemsText: itemsResponse.text,
+    logsText: logsResponse.text
+  });
+}
+
+export function parseUcheckCourseAttendanceResponse(
+  input: UcheckAttendanceParseInput
+): UcheckCourseAttendanceResult {
   const items = parseJsonEnvelope<UcheckAttendanceItemsRaw>(
-    itemsResponse.text,
+    input.itemsText,
     "UCheck 출결 회차 목록"
   );
   const logs = parseJsonEnvelope<UcheckAttendanceLogRaw[]>(
-    logsResponse.text,
+    input.logsText,
     "UCheck 출결 로그"
   );
 
-  const studentNo = context.accountInfo.studentNo ?? credentials.userId;
+  const studentNo = input.accountInfo.studentNo ?? input.userId;
   const myStudent = items.student?.find((row) => row.student_no === studentNo);
 
   if (!myStudent) {
     throw new Error(
-      `강의 ${resolved.lecture.courseTitle} (${resolved.lecture.lectureNo}) 에서 본인 학번 ${studentNo} 출결 요약을 찾지 못했습니다.`
+      `강의 ${input.lecture.courseTitle} (${input.lecture.lectureNo}) 에서 본인 학번 ${studentNo} 출결 요약을 찾지 못했습니다.`
     );
   }
 
@@ -576,7 +598,11 @@ export async function getUcheckCourseAttendance(
       const key = `${week}:${classNo}`;
       const log = logsBySession.get(key);
       const timeRange = formatTimeRange(row.start_time, row.end_time);
-      const scheduleSegment = matchScheduleSegment(resolved.lecture, timeRange, row.lecture_date);
+      const scheduleSegment = matchScheduleSegment(
+        input.lecture,
+        timeRange,
+        row.lecture_date
+      );
       const statusCode = cleanText(log?.attend_type);
 
       return {
@@ -604,10 +630,10 @@ export async function getUcheckCourseAttendance(
     }) ?? [];
 
   return {
-    ...(context.accountInfo.studentNo ? { studentNo: context.accountInfo.studentNo } : {}),
-    studentName: myStudent.student_nm ?? context.accountInfo.name,
-    resolvedBy: resolved.resolvedBy,
-    course: resolved.lecture,
+    ...(input.accountInfo.studentNo ? { studentNo: input.accountInfo.studentNo } : {}),
+    studentName: myStudent.student_nm ?? input.accountInfo.name,
+    resolvedBy: input.resolvedBy,
+    course: input.lecture,
     summary,
     totalSessions: sessions.length,
     completedSessions: sessions.filter((session) => session.isPast).length,

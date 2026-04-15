@@ -1,0 +1,36 @@
+{
+  "result_code": "success",
+  "data": {
+    "student": [
+      {
+        "student_no": "60123456",
+        "student_nm": "홍길동",
+        "lecture_no": 12345,
+        "atd_time": 6,
+        "ltn_time": 1,
+        "lev_time": 0,
+        "asc_time": 1
+      }
+    ],
+    "lecture": [
+      {
+        "lecture_week": 1,
+        "class_no": 1,
+        "s_class_no": 1,
+        "lecture_date": "20260413",
+        "start_time": "0900",
+        "end_time": "1015",
+        "past_yn": "Y"
+      },
+      {
+        "lecture_week": 1,
+        "class_no": 2,
+        "s_class_no": 2,
+        "lecture_date": "20260415",
+        "start_time": "0900",
+        "end_time": "1015",
+        "past_yn": "Y"
+      }
+    ]
+  }
+}

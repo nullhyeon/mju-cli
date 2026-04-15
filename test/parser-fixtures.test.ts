@@ -27,11 +27,13 @@ import {
 } from "../src/lms/online.ts";
 import {
   parseCurrentGradesPage,
+  parseGradeHistoryPage,
   parseGraduationPage,
   parseTimetablePage
 } from "../src/msi/services.ts";
 import {
   parseUcheckAccountInfoResponse,
+  parseUcheckCourseAttendanceResponse,
   parseUcheckLectureListResponse
 } from "../src/ucheck/services.ts";
 
@@ -393,6 +395,50 @@ test("MSI graduation fixture parses earned credits, required credits, and gaps",
   assert.deepEqual(result.notes, ["캡스톤 교과목 이수 필요"]);
 });
 
+test("MSI grade history fixture parses term cards and comprehensive rows", async () => {
+  const html = await readFixture("msi/grade-history.html");
+  const result = parseGradeHistoryPage(html);
+
+  assert.equal(result.studentInfo["학번"], "60123456");
+  assert.equal(result.overview["신청학점"], "18");
+  assert.deepEqual(result.creditsByCategory, [
+    { label: "전공", rawValue: "66", credits: 66 },
+    { label: "교양", rawValue: "30", credits: 30 }
+  ]);
+  assert.deepEqual(result.termRecords, [
+    {
+      title: "2026년도 1학기 성적",
+      year: 2026,
+      termLabel: "1학기",
+      requestedCredits: 18,
+      earnedCredits: 18,
+      totalPoints: 81,
+      gpa: 4.5,
+      courses: [
+        {
+          category: "전공",
+          courseCode: "CS101",
+          courseTitle: "운영체제",
+          credits: 3,
+          grade: "A+"
+        }
+      ]
+    }
+  ]);
+  assert.deepEqual(result.allRows, [
+    {
+      year: 2026,
+      termLabel: "1학기",
+      category: "전공",
+      courseTitle: "운영체제",
+      courseCode: "CS101",
+      credits: 3,
+      grade: "A+",
+      duplicateCode: "-"
+    }
+  ]);
+});
+
 test("UCheck account info fixture parses base term and available terms", async () => {
   const text = await readFixture("ucheck/account-info.json");
   const result = parseUcheckAccountInfoResponse(text);
@@ -426,4 +472,74 @@ test("UCheck lecture list fixture filters invalid rows and normalizes schedule t
     department: "컴퓨터공학과",
     scheduleSummary: "monday/09:00~10:15/공학관 101\nwednesday/09:00~10:15/공학관 101"
   });
+});
+
+test("UCheck attendance fixtures parse summary and per-session attendance result", async () => {
+  const itemsText = await readFixture("ucheck/attendance-items.json");
+  const logsText = await readFixture("ucheck/attendance-logs.json");
+  const result = parseUcheckCourseAttendanceResponse({
+    accountInfo: {
+      accountId: "60123456",
+      accountRole: "student",
+      name: "홍길동",
+      studentNo: "60123456",
+      baseYearTerm: { lectureYear: 2026, lectureTerm: 1 },
+      availableYearTerms: [{ lectureYear: 2026, lectureTerm: 1 }]
+    },
+    lecture: {
+      lectureNo: 12345,
+      lectureYear: 2026,
+      lectureTerm: 1,
+      courseCode: "CS101",
+      courseTitle: "운영체제",
+      classCode: "01",
+      professor: "홍길동",
+      department: "컴퓨터공학과",
+      scheduleSummary: "monday/09:00~10:15/공학관 101\nwednesday/09:00~10:15/공학관 101"
+    },
+    resolvedBy: "lecture-no",
+    userId: "60123456",
+    itemsText,
+    logsText
+  });
+
+  assert.equal(result.studentNo, "60123456");
+  assert.equal(result.studentName, "홍길동");
+  assert.deepEqual(result.summary, {
+    attendedCount: 6,
+    tardyCount: 1,
+    earlyLeaveCount: 0,
+    absentCount: 1
+  });
+  assert.equal(result.totalSessions, 2);
+  assert.equal(result.completedSessions, 2);
+  assert.deepEqual(result.sessions, [
+    {
+      week: 1,
+      classNo: 1,
+      sessionLabel: "1-1",
+      date: "2026-04-13",
+      dateLabel: "2026/04/13(월)",
+      timeRange: "09:00~10:15",
+      classroom: "공학관 101",
+      isPast: true,
+      statusCode: "1",
+      statusLabel: "출석",
+      attendAt: "09:01:30",
+      leaveAt: "10:16:00"
+    },
+    {
+      week: 1,
+      classNo: 2,
+      sessionLabel: "1-2",
+      date: "2026-04-15",
+      dateLabel: "2026/04/15(수)",
+      timeRange: "09:00~10:15",
+      classroom: "공학관 101",
+      isPast: true,
+      statusCode: "2",
+      statusLabel: "지각",
+      attendAt: "09:10:00"
+    }
+  ]);
 });

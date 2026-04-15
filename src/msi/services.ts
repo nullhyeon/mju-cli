@@ -425,7 +425,7 @@ function parseComprehensiveGradeRows(html: string): MsiGradeHistoryRow[] {
     .filter((row): row is MsiGradeHistoryRow => row !== null);
 }
 
-function parseGradeHistoryPage(html: string): MsiGradeHistoryResult {
+export function parseGradeHistoryPage(html: string): MsiGradeHistoryResult {
   const $ = load(html);
   const studentInfoCard = $(".basic-group .card-item.basic").first();
   const overviewCard = $(".card-item.basic")
