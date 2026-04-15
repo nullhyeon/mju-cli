@@ -105,10 +105,13 @@ export class AuthManager {
 
   async forget(): Promise<ForgetResult> {
     const logoutResult = await this.logout();
+    const crossServiceCleanup = await this.sessionCleaner.clearCrossServiceSessions();
     const storedLogin = await this.storedCredentialService.forgetStoredLogin();
 
     return {
       ...logoutResult,
+      crossServiceSessionFiles: crossServiceCleanup.sessionFiles,
+      deletedCrossServiceSessions: crossServiceCleanup.deletedFiles,
       ...storedLogin
     };
   }

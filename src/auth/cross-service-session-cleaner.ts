@@ -4,20 +4,28 @@ import { resolveLibraryRuntimeConfig } from "../library/config.js";
 import { resolveMsiRuntimeConfig } from "../msi/config.js";
 import { resolveUcheckRuntimeConfig } from "../ucheck/config.js";
 
-async function removeFiles(filePaths: string[]): Promise<void> {
-  await Promise.all(
+async function removeFiles(filePaths: string[]): Promise<string[]> {
+  const deletedFiles = await Promise.all(
     filePaths.map(async (filePath) => {
       try {
         await fs.rm(filePath);
+        return filePath;
       } catch (error: unknown) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          return;
+          return null;
         }
 
         throw error;
       }
     })
   );
+
+  return deletedFiles.filter((filePath): filePath is string => filePath !== null);
+}
+
+export interface CrossServiceSessionCleanupResult {
+  sessionFiles: string[];
+  deletedFiles: string[];
 }
 
 export class CrossServiceSessionCleaner {
@@ -31,7 +39,13 @@ export class CrossServiceSessionCleaner {
     ];
   }
 
-  async clearCrossServiceSessions(): Promise<void> {
-    await removeFiles(this.getSessionFiles());
+  async clearCrossServiceSessions(): Promise<CrossServiceSessionCleanupResult> {
+    const sessionFiles = this.getSessionFiles();
+    const deletedFiles = await removeFiles(sessionFiles);
+
+    return {
+      sessionFiles,
+      deletedFiles
+    };
   }
 }

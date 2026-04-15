@@ -187,7 +187,7 @@ export function createAuthCommand(getGlobals: () => GlobalOptions): Command {
 
   auth
     .command("forget")
-    .description("Delete saved credentials and LMS session")
+    .description("Delete saved credentials and all saved service sessions")
     .action(async () => {
       const globals = getGlobals();
       const authManager = new AuthManager(resolveLmsRuntimeConfig({ appDataDir: globals.appDir }));

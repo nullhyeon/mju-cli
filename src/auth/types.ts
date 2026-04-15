@@ -46,4 +46,6 @@ export interface ForgetResult extends LogoutResult {
   deletedProfile: boolean;
   deletedPassword: boolean;
   forgottenUserId?: string;
+  crossServiceSessionFiles: string[];
+  deletedCrossServiceSessions: string[];
 }

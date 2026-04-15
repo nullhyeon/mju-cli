@@ -100,3 +100,63 @@ test("AuthManager delegates storage and clears cross-service sessions on account
     await assert.rejects(fs.access(filePath), /ENOENT/);
   }
 });
+
+test("AuthManager.forget clears saved credentials and every service session", async (t) => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "mju-auth-forget-"));
+  t.after(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  const config = resolveLmsRuntimeConfig({ appDataDir: tempDir });
+  const vault = new MemoryPasswordVault();
+  const authManager = new AuthManager(config, {
+    passwordVault: vault,
+    clientFactory: () =>
+      ({
+        async authenticateAndSnapshot() {
+          return createSnapshot(config.sessionFile, config.mainHtmlFile, config.coursesFile);
+        },
+        async clearSavedSession() {
+          await fs.rm(config.sessionFile);
+          return true;
+        }
+      }) as never
+  });
+
+  await authManager.loginAndStore("60123456", "forget-secret");
+
+  const sessionFiles = [
+    config.sessionFile,
+    resolveLibraryRuntimeConfig({ appDataDir: tempDir }).sessionFile,
+    resolveMsiRuntimeConfig({ appDataDir: tempDir }).sessionFile,
+    resolveUcheckRuntimeConfig({ appDataDir: tempDir }).sessionFile
+  ];
+
+  await Promise.all(
+    sessionFiles.map(async (filePath) => {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, "saved-session", "utf8");
+    })
+  );
+
+  const result = await authManager.forget();
+
+  assert.equal(result.deletedSession, true);
+  assert.equal(result.deletedProfile, true);
+  assert.equal(result.deletedPassword, true);
+  assert.equal(result.forgottenUserId, "60123456");
+  assert.deepEqual(
+    result.crossServiceSessionFiles.sort(),
+    sessionFiles.slice(1).sort()
+  );
+  assert.deepEqual(
+    result.deletedCrossServiceSessions.sort(),
+    sessionFiles.slice(1).sort()
+  );
+  assert.equal(await vault.getPassword(authManager.getCredentialTarget("60123456")), null);
+
+  await assert.rejects(fs.access(config.profileFile), /ENOENT/);
+  for (const filePath of sessionFiles) {
+    await assert.rejects(fs.access(filePath), /ENOENT/);
+  }
+});
