@@ -142,7 +142,7 @@ function measureProvidedText(value: string | undefined): number {
   return normalizeText(load(`<div>${trimmed}</div>`).text()).length;
 }
 
-function parseSubmitButton(html: string): {
+export function parseSubmitButton(html: string): {
   hasSubmitButton: boolean;
   submitButtonLabel?: string;
   submitPopupUrl?: string;
@@ -182,7 +182,7 @@ function parseSubmitButton(html: string): {
   };
 }
 
-function parseSubmitPopupSpec(
+export function parseSubmitPopupSpec(
   html: string,
   popupUrl: string,
   submitButtonLabel: string | undefined
@@ -249,7 +249,7 @@ function parseSubmitPopupSpec(
   };
 }
 
-function parseDeleteSpec(html: string): AssignmentDeleteSpec {
+export function parseDeleteSpec(html: string): AssignmentDeleteSpec {
   const $ = load(html);
   const deleteButton = $("#delBtn, button[onclick*='deleteReport']").first();
   const hasDeleteButton = deleteButton.length > 0;

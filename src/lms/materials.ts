@@ -173,6 +173,30 @@ function extractQnaTarget(html: string): ActivityQnaTarget | undefined {
   };
 }
 
+export function parseMaterialDetailHtml(html: string): {
+  title: string;
+  bodyHtml: string;
+  bodyText: string;
+  author?: string;
+  postedAt?: string;
+  viewCount?: number;
+  qnaTarget?: ActivityQnaTarget;
+} {
+  const meta = parseMaterialDetailMeta(html);
+  const body = parseMaterialBody(html);
+  const qnaTarget = extractQnaTarget(html);
+
+  return {
+    title: body.title,
+    bodyHtml: body.bodyHtml,
+    bodyText: body.bodyText,
+    ...(meta.author ? { author: meta.author } : {}),
+    ...(meta.postedAt ? { postedAt: meta.postedAt } : {}),
+    ...(meta.viewCount !== undefined ? { viewCount: meta.viewCount } : {}),
+    ...(qnaTarget ? { qnaTarget } : {})
+  };
+}
+
 export async function listCourseMaterials(
   client: MjuLmsSsoClient,
   options: ListMaterialsOptions
@@ -223,9 +247,8 @@ export async function getCourseMaterial(
     encoding: "utf-8"
   });
 
-  const meta = parseMaterialDetailMeta(response.text);
-  const body = parseMaterialBody(response.text);
-  if (!body.title) {
+  const parsed = parseMaterialDetailHtml(response.text);
+  if (!parsed.title) {
     throw new Error(`자료 상세를 읽지 못했습니다. articleId=${options.articleId}`);
   }
 
@@ -235,21 +258,20 @@ export async function getCourseMaterial(
     : [];
   const courseTitle = classroom.courseTitle;
   const contentSeq = attachmentRequest?.contentSeq;
-  const qnaTarget = extractQnaTarget(response.text);
 
   return {
     kjkey: options.kjkey,
     articleId: options.articleId,
-    title: body.title,
-    bodyHtml: body.bodyHtml,
-    bodyText: body.bodyText,
+    title: parsed.title,
+    bodyHtml: parsed.bodyHtml,
+    bodyText: parsed.bodyText,
     attachments,
     ...(courseTitle ? { courseTitle } : {}),
-    ...(meta.postedAt ? { openAt: meta.postedAt } : {}),
-    ...(meta.author ? { author: meta.author } : {}),
-    ...(meta.postedAt ? { postedAt: meta.postedAt } : {}),
-    ...(meta.viewCount !== undefined ? { viewCount: meta.viewCount } : {}),
+    ...(parsed.postedAt ? { openAt: parsed.postedAt } : {}),
+    ...(parsed.author ? { author: parsed.author } : {}),
+    ...(parsed.postedAt ? { postedAt: parsed.postedAt } : {}),
+    ...(parsed.viewCount !== undefined ? { viewCount: parsed.viewCount } : {}),
     ...(contentSeq ? { contentSeq } : {}),
-    ...(qnaTarget ? { qnaTarget } : {})
+    ...(parsed.qnaTarget ? { qnaTarget: parsed.qnaTarget } : {})
   };
 }

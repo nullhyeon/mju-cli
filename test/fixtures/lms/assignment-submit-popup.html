@@ -1,0 +1,44 @@
+<div class="submit_popup">
+  <textarea id="TXT" name="TXT">기존 제출 본문</textarea>
+  <button id="pickfiles2" type="button">파일 선택</button>
+</div>
+
+<script>
+function inputCheck() {
+  alert("내용을 입력하세요.");
+}
+
+$("#pickfiles2").uploadifive({
+  url: "/ilos/co/efile_upload_multiple2.acl",
+  formData: {
+    'path': '/2026/report',
+    'pf_st_flag': '2'
+  }
+});
+
+function saveSubmit() {
+  $.ajax({
+    url: "/ilos/cls/st/report/report_submit_check.acl",
+    type: "POST",
+    data: {
+      SUBMIT_CHECK_DIV : "report"
+    }
+  });
+
+  $.ajax({
+    url: "/ilos/cls/st/report/report_update.acl",
+    type: "POST",
+    data: {
+      CONTENT_SEQ : "CONTENT123"
+    }
+  });
+
+  $.ajax({
+    url: "/ilos/co/efile_list2.acl",
+    type: "POST",
+    data: {
+      CONTENT_SEQ : "CONTENT123"
+    }
+  });
+}
+</script>

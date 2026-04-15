@@ -1,0 +1,504 @@
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script>
+$(function() {
+  $("#material_view_pop").dialog({
+    title: "Web-수업참여",
+  });
+  
+  $.ajax({
+    url: "/ilos/co/efile_list.acl",
+    type: "POST",
+    data: { 
+      ud : "60212177",
+      ky : "A20243JEJ022150766",
+      pf_st_flag : "2",
+      CONTENT_SEQ : "V65BVFVLM4YEK",
+      encoding : "utf-8"
+          },
+    async: true,
+    success: function(html){
+      $("#tbody_file").append(html);
+      if($("#tbody_file").find("a").length > 0){
+        $("#tbody_file").show();
+      }
+    },
+    error : ajaxErrorMsg
+  });
+
+  
+});
+
+function updateForm() {
+  $.ajax({
+    url: "/ilos/cls/st/board/open_material_update_pop.acl",
+    type: "POST",
+    data: { 
+      ud : "60212177",
+      ky : "A20243JEJ022150766",
+      returnData : "json",
+      ARTL_GRP_ID : "46021",
+      ARTL_NUM : "8723729",
+      encoding : "utf-8"
+    },
+    async: false,
+    success: function(data){
+      if (data.isError) {
+        alert(data.message);
+        stRoomAuthCheck(data);
+      }else{
+        $("#material_view_pop").html(data);
+      }
+    },
+    error : function(jqXHR, exception){
+      ajaxErrorMsg(jqXHR, exception);
+      return false;
+    }
+  });
+}
+
+function deleteOpenMaterial(artl_num) {
+  if(!confirm("정말로 삭제하시겠습니까?")) {
+    return;
+  }
+  $.ajax({
+    url: "/ilos/cls/st/board/open_material_delete.acl",
+    type: "POST",
+    data: { 
+      ud : "60212177",
+      ky : "A20243JEJ022150766",
+      returnData : "json",
+      ARTL_NUM : "8723729",
+      ARTL_GRP_ID : "46021",
+      encoding : "utf-8"
+          },
+    async: false,
+    success: function(data){
+          if(data.isError){
+            alert(data.message);
+            stRoomAuthCheck(data);
+          }else{
+            listPage();
+            $("#material_view_pop").dialog("close");
+          }
+    },
+    error : ajaxErrorMsg
+  });
+}
+</script>
+<header class="dialog_header mobile_hidden">
+  <div class="dialog_header_title font_headline2">Web-수업참여</div>
+</header>
+<div class="question_container">
+  <div class="question_title_form">
+    
+    <div class="avatar font_profile2 bg_avatar_eucalyptus" u_name="주영"></div>
+    
+    <div class="question_title_wrap">
+      <div class="question_title_box">
+        <div class="title_wrap">
+          <span class="font_headline3 question_title">Web - 수업참여 9/24</span> 
+        </div>
+                
+      </div>
+      <div class="question_title_info font_caption2">
+        <div class="reg_nm">박주영(20200270)</div>
+        <div>2024년 9월 24일 (화) 오후 1:36</div>
+        <div class="view_cnt">95</div>
+      </div>
+    </div>    
+  </div>
+  <div class="question_body font_body2">
+    <div><p>&nbsp;</p><p><a href="https://docs.google.com/document/d/1Ji6E3YhRI9W-F91Bw8YWeFeX6Lk7oOUPTu_96OusRmM/edit?usp=drive_link" target="_blank">https://docs.google.com/document/d/1Ji6E3YhRI9W-F91Bw8YWeFeX6Lk7oOUPTu_96OusRmM/edit?usp=drive_link</a>&nbsp;</p></div>
+    
+    <div id="tbody_file" class="attach_container"></div>
+      
+  </div>    
+  <div class="comment_zone">
+    <div class="comment_btn_wrap">
+      <button type="button" class="comment_btn" id="comment_btn_8723729" onclick="$(this).toggleClass('selected'); $('#comment_form_8723729').stop().slideToggle(200);" onkeypress="this.onclick;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M13.6125 1.19922H6.62498C2.78748 1.19922 0.737476 3.22422 0.724976 7.06172V11.4117C0.724976 16.2992 2.97498 17.2867 6.59998 17.2867H7.09997C7.09997 17.2867 7.21247 17.3492 7.23747 17.3742L8.54997 19.1117C8.96247 19.6617 9.51248 19.9617 10.1125 19.9617C10.7125 19.9617 11.2875 19.6617 11.6875 19.1242L13 17.3742C13 17.3742 13.1 17.2992 13.175 17.2992H13.6125C17.4625 17.2992 19.5 15.2617 19.5 11.4242V7.07422C19.5 3.23672 17.4625 1.19922 13.6125 1.19922ZM6.66248 10.8117C6.03748 10.8117 5.53748 10.2992 5.53748 9.68672C5.53748 9.07422 6.03748 8.56172 6.66248 8.56172C7.28748 8.56172 7.78748 9.07422 7.78748 9.68672C7.78748 10.2992 7.28748 10.8117 6.66248 10.8117ZM10.1125 10.7492C9.52497 10.7492 9.04997 10.2742 9.04997 9.68672C9.04997 9.09922 9.52497 8.62422 10.1125 8.62422C10.7 8.62422 11.175 9.09922 11.175 9.68672C11.175 10.2742 10.7 10.7492 10.1125 10.7492ZM13.55 10.8117C12.925 10.8117 12.425 10.2992 12.425 9.68672C12.425 9.07422 12.925 8.56172 13.55 8.56172C14.175 8.56172 14.675 9.07422 14.675 9.68672C14.675 10.2992 14.175 10.8117 13.55 10.8117Z" fill="#E31B54"/>
+        </svg>
+        <span id="cmmt_cnt_8723729">0</span>
+      </button>
+    </div>
+    
+          
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script>
+  const open_cmmt_reply_arr = [];
+  
+  $(function() {  
+    cmmtList("8723729","K004","KC04","st","");
+  });
+  
+  function cmmtList(menu_seq,brd_id,cmmt_brd_id,auth,menu_seq2, target_cmmt) {
+    $.ajax({
+      url: "/ilos/cls/st/co/cmmt_list.acl",
+      type: "POST",
+      data: { 
+        KJKEY    : "A20243JEJ022150766",
+        MENU_SEQ : menu_seq,
+        MENU_SEQ2 : menu_seq2,
+        BRD_ID : brd_id,
+        CMMT_BRD_ID : cmmt_brd_id,
+        auth : auth,
+        encoding : "utf-8"
+      },
+      async: false,
+      success: function(data){
+        $("#comment_form_"+menu_seq).html(data);
+        
+        if(open_cmmt_reply_arr.length > 0){
+          for(let i = 0; i < open_cmmt_reply_arr.length; i++){
+            $('#cmmt_reply_wrap_btn_'+ open_cmmt_reply_arr[i]).addClass('active');
+            $('#cmmt_reply_wrap_btn_'+ open_cmmt_reply_arr[i]).parent().addClass('active');
+            $('#comment_reply_list_wrap_'+open_cmmt_reply_arr[i]).css('display', 'flex');
+          }
+        }
+        
+        if(target_cmmt){
+          setTimeout(function(){
+            if($('#comment_'+target_cmmt).parent().hasClass('comment_reply_list_wrap')){
+              const cmmt_wrap = $("#comment_"+target_cmmt).closest(".comment_list_wrap").find("button.cmmt_reply_wrap_header");
+              const parent_cmmt_num = cmmt_wrap.data('num');
+              
+              cmmt_wrap.addClass('active');
+              $('#comment_reply_list_wrap_'+parent_cmmt_num).css('display', 'flex');    
+              checkOpenCmmtReplyWrap(parent_cmmt_num, 1);
+              
+              open_cmmt_reply_arr.push(parent_cmmt_num);
+            }
+            
+            const window_offsetTop = document.querySelector('html').scrollTop;
+            const offset = $('#comment_'+target_cmmt).offset();
+            $('#comment_'+target_cmmt).closest('.ui-dialog-form').animate({scrollTop: offset.top - window_offsetTop - 100}, 500);
+            showTatgetContent($('#comment_'+target_cmmt));
+          }, 100);
+        }
+        
+      },
+      error : function(jqXHR, exception){
+        ajaxErrorMsg(jqXHR, exception);
+        return false;
+      }
+    });
+  }
+  function insertCmmt(obj,menu_seq,brd_id,cmmt_brd_id,auth,menu_seq2) {
+    if(obj.hasClass('disabled')){
+      return false;
+    }
+    
+    var cm = trim($("#wrtExplain_"+menu_seq).val());
+    if(cm.length == 0){
+      alert("댓글을 입력하세요.");
+      $("#wrtExplain_"+menu_seq).focus();
+      return;
+    }    
+  
+    if(getLength(cm)  > 1800 ) {
+      alert(imaxsoft.i18n.Resource.getString('err.cmmtLimitSize',{'$size':getLength(cm)+'byte'}));
+      $("#wrtExplain_"+menu_seq).focus();
+      return;
+    }
+    
+    $.ajax({
+      url: "/ilos/cls/st/co/cmmt_insert.acl",
+      type: "POST",
+      data: { 
+        BRD_ID : brd_id,
+        auth : auth,
+        MENU_SEQ : menu_seq,
+        MENU_SEQ2 : menu_seq2,
+        OPEN_YN : $("input:checkbox[id='OPEN_YN"+menu_seq+"']").is(":checked") ? "N" : "Y",
+        CMT : cm,
+        ky  : "A20243JEJ022150766",
+        ud  : "60212177",
+        encoding : "utf-8"
+      },
+      async: false,
+      success: function(data){
+        if(data.isError){
+          alert(data.message);
+        }
+        cmmtList(menu_seq,brd_id,cmmt_brd_id,auth,menu_seq2);
+        
+        if(brd_id == 'K009'){
+          showDetailUserList();
+        }
+        if(brd_id == 'K001'){
+          
+          noticeListPage();
+          
+        }
+        if(brd_id == 'K004'){
+          listPage();
+        }
+      },
+      error : function(jqXHR, exception){
+        ajaxErrorMsg(jqXHR, exception);
+        return false;
+      }
+    });
+  }
+  
+  function updateCmmt(obj,num,menu_seq,brd_id,cmmt_brd_id,auth,content_seq,menu_seq2) {
+    if(obj.hasClass('disabled')){
+      return false;
+    }
+    
+    var _textarea = $("#wrtExplain_"+menu_seq+num);
+    var cm = trim(_textarea.val());
+    
+    if(cm.length == 0){
+      alert("댓글을 입력하세요.");
+      _textarea.focus();
+      return;
+    }
+  
+    if(getLength(cm)  > 1800 ) {
+      alert(imaxsoft.i18n.Resource.getString('err.cmmtLimitSize',{'$size':getLength(cm)}));
+      _textarea.focus();
+      return;
+    }
+    
+    const open_yn = obj.closest('.comment_body.edit').find('input:checkbox[name=OPEN_YN]').is(':checked') ? "N" : "Y";
+  
+    $.ajax({
+      url: "/ilos/cls/st/co/cmmt_update.acl",
+      type: "POST",
+      data: {
+        BRD_ID : brd_id,
+        auth : auth,
+        CMMT_NUM : num,
+        MENU_SEQ : menu_seq,
+        MENU_SEQ2 : menu_seq2,
+        CONTENT_SEQ : content_seq,
+        OPEN_YN : open_yn,
+        CMT : cm,
+        ky  : "A20243JEJ022150766",
+        ud  : "60212177",
+        encoding : "utf-8"
+      },
+      async: false,
+      success: function(data){
+        if(data.isError){
+          alert(data.message);
+        }
+        cmmtList(menu_seq,brd_id,cmmt_brd_id,auth,menu_seq2);
+        
+        if(brd_id == 'K009'){
+          showDetailUserList();
+        }        
+      },
+      error : function(jqXHR, exception){
+        ajaxErrorMsg(jqXHR, exception);
+        return false;
+      }
+    });
+  }
+  
+  function deleteCmmt(num,menu_seq,brd_id,cmmt_brd_id,auth,content_seq,menu_seq2) {
+    if(!confirm("정말로 삭제하시겠습니까?")){
+      return false;
+    }
+    $.ajax({
+      url: "/ilos/cls/st/co/cmmt_delete.acl",
+      type: "POST",
+      data: { 
+        BRD_ID : "K004",
+        auth : "st",
+        CMMT_NUM : num,
+        MENU_SEQ : menu_seq,
+        MENU_SEQ2 : menu_seq2,
+        CONTENT_SEQ : content_seq,
+        ky  : "A20243JEJ022150766",
+        ud  : "60212177",
+        encoding : "utf-8"
+      },
+      async: false,
+      success: function(data){
+        if(data.isError){
+          alert(data.message);
+        }
+        cmmtList(menu_seq,brd_id,cmmt_brd_id,auth,menu_seq2);
+        
+        if(brd_id == 'K009'){
+          showDetailUserList();
+        }  
+        if(brd_id == 'K001'){
+          
+          noticeListPage();
+          
+        }
+        if(brd_id == 'K004'){
+          listPage();
+        }
+      },
+      error : function(jqXHR, exception){
+        ajaxErrorMsg(jqXHR, exception);
+        return false;
+      }
+    });
+  }
+  
+  function resetEditCmmt(num,menu_seq) {
+    $(".comment_body").show();
+    $(".comment_body.edit").hide();
+    $("#comment_body_edit"+menu_seq+num).hide();
+  }
+  function editCmmt(num,menu_seq,open_yn) {
+    var _txt_val = $('#cmt_txt_val_'+num).val();
+    var _editor = $('#wrtExplain_'+menu_seq+num);
+    $('#wrtExplain_'+menu_seq).val("");
+    resetEditCmmt(num,menu_seq);
+    $("#comment_body"+menu_seq+num).hide();
+    $("#comment_body_edit"+menu_seq+num).show();
+    _editor.val(_txt_val);
+    _lec(_editor);
+    _editor.focus();
+    textareaAutoResize(_editor);
+    if("N" == open_yn){
+      $("#reg_nm"+menu_seq+num).removeClass("regnm_hide");
+      $("#reg_nm"+menu_seq+num).addClass("regnm_hide");
+      $('input:checkbox[id="OPEN_YN'+menu_seq+num+'"]').prop("checked",true);
+    }else{
+      $("#reg_nm"+menu_seq+num).removeClass("regnm_hide");
+      $('input:checkbox[id="OPEN_YN'+menu_seq+num+'"]').prop("checked",false);
+    }
+  }
+  function _lec(obj){
+    obj.parent().find(".ext_len").html(getLength(trim(obj.val())));
+    if(getLength(trim(obj.val())) > 0){
+      obj.closest('.comment_textarea_wrap').find('button.cmmt_save').removeClass('disabled');
+    }else{
+      obj.closest('.comment_textarea_wrap').find('button.cmmt_save').addClass('disabled');
+    }
+  }
+  
+  function cancelCmmtReply(cmmt_num){
+    var isClose = true;
+    if($('#wrtExplain2_'+cmmt_num).val() != ''){
+      if(!confirm("답글 작성을 취소 하시겠습니까?")){
+        isClose = false;
+      }
+    }
+    if(isClose){
+      $('#comment_reply_body_'+cmmt_num).hide();
+      $('#wrtExplain2_'+cmmt_num).val('');
+      $('#cmmt_reply_btn_'+cmmt_num).removeClass('active');
+      $('#reg_nm_edit'+cmmt_num).removeClass('regnm_hide');
+      $('#OPEN_YN_EDIT'+cmmt_num).prop('checked', false)
+    }
+  }
+  
+  function insertCmmtReply(obj,menu_seq,brd_id,cmmt_brd_id,auth,menu_seq2,cmmt_num) {
+    if(obj.hasClass('disabled')){
+      return false;
+    }
+    
+    const cm = trim($("#wrtExplain2_"+cmmt_num).val());
+    if(cm.length == 0){
+      alert("댓글을 입력하세요.");
+      $("#wrtExplain2_"+cmmt_num).focus();
+      return;
+    }
+  
+    if(getLength(cm)  > 1800 ) {
+      alert(imaxsoft.i18n.Resource.getString('err.cmmtLimitSize',{'$size':getLength(cm)+'byte'}));
+      $("#wrtExplain2_"+cmmt_num).focus();
+      return;
+    }
+    
+    const ref_cmmt_num = obj.data('r');
+    const parent_cmmt_num = obj.data('p');
+    
+    const open_yn = obj.closest('.comment_body.edit').find('input:checkbox[name=OPEN_YN]').is(':checked') ? "N" : "Y";
+    
+    $.ajax({
+      url: "/ilos/cls/st/co/cmmt_insert.acl",
+      type: "POST",
+      data: { 
+        BRD_ID : brd_id,
+        auth : auth,
+        MENU_SEQ : menu_seq,
+        MENU_SEQ2 : menu_seq2,
+        CMT : cm,
+        REF_CMMT_NUM		: ref_cmmt_num,
+        PARENT_CMMT_NUM : parent_cmmt_num,
+        OPEN_YN : open_yn,
+        ky  : "A20243JEJ022150766",
+        ud  : "60212177",
+        encoding : "utf-8"
+      },
+      async: false,
+      success: function(data){
+        if(data.isError){
+          alert(data.message);
+        }
+        checkOpenCmmtReplyWrap(ref_cmmt_num, 2);
+        cmmtList(menu_seq,brd_id,cmmt_brd_id,auth,menu_seq2);
+        
+        if(brd_id == 'K009'){
+          showDetailUserList();
+        }        
+      },
+      error : function(jqXHR, exception){
+        ajaxErrorMsg(jqXHR, exception);
+        return false;
+      }
+    });
+  }
+  
+  
+  function checkOpenCmmtReplyWrap(cmmt_num, dv){
+    
+    cmmt_num = Number(cmmt_num);
+    if(dv == 1){
+      open_cmmt_reply_arr.includes(cmmt_num) ? open_cmmt_reply_arr.splice(open_cmmt_reply_arr.indexOf(cmmt_num), 1) 
+          																	 : open_cmmt_reply_arr.push(cmmt_num);
+    }else if(dv == 2){
+      !open_cmmt_reply_arr.includes(cmmt_num) && open_cmmt_reply_arr.push(cmmt_num);
+    }
+  }
+</script>
+<div id="comment_form_8723729" class="comment_form "></div>
+
+  </div>
+</div>

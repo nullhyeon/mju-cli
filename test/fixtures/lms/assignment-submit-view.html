@@ -1,0 +1,27 @@
+<div class="report_view_wrap">
+  <button type="button" onclick="openReportSubmitPop('/ilos/cls/st/report/report_update_pop.acl?RT_SEQ=8709455');">
+    수정하기
+  </button>
+  <button id="delBtn" type="button" onclick="deleteReport();">삭제하기</button>
+</div>
+
+<script>
+function deleteReport() {
+  $.ajax({
+    url: "/ilos/cls/st/report/report_submit_check.acl",
+    type: "POST",
+    data: {
+      SUBMIT_CHECK_DIV : "report",
+      CONTENT_SEQ : "CONTENT123"
+    }
+  });
+
+  $.ajax({
+    url: "/ilos/cls/st/report/report_delete.acl",
+    type: "POST",
+    data: {
+      CONTENT_SEQ : "CONTENT123"
+    }
+  });
+}
+</script>

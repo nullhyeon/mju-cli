@@ -3,6 +3,15 @@ import fs from "node:fs/promises";
 import test from "node:test";
 
 import { parseAssignmentListHtml } from "../src/lms/assignments.ts";
+import {
+  parseDeleteSpec,
+  parseSubmitButton,
+  parseSubmitPopupSpec
+} from "../src/lms/assignment-submission-check.ts";
+import {
+  parseMaterialDetailHtml,
+  parseMaterialListHtml
+} from "../src/lms/materials.ts";
 import { parseNoticeListHtml } from "../src/lms/notices.ts";
 import { parseOnlineWeekListHtml } from "../src/lms/online.ts";
 import {
@@ -61,6 +70,89 @@ test("LMS online week fixture parses lecture week summaries", async () => {
     weekLabel: "5주차",
     statusLabel: "학습상태",
     statusText: "학습 중"
+  });
+});
+
+test("LMS material list fixture parses open board material summaries", async () => {
+  const html = await readFixture("lms/materials-list.html");
+  const result = parseMaterialListHtml(html);
+
+  assert.equal(result.total, 3);
+  assert.equal(result.materials.length, 3);
+  assert.deepEqual(result.materials[0], {
+    articleId: 8723729,
+    title: "Web - 수업참여 9/24",
+    author: "박주영",
+    postedAt: "2024년 9월 24일 (화) 오후 1:36",
+    viewCount: 94,
+    commentCount: 0,
+    isUnread: false
+  });
+});
+
+test("LMS material detail fixture parses body and metadata without attachment noise", async () => {
+  const html = await readFixture("lms/materials-detail.html");
+  const result = parseMaterialDetailHtml(html);
+
+  assert.equal(result.title, "Web - 수업참여 9/24");
+  assert.equal(result.author, "박주영");
+  assert.equal(result.postedAt, "2024년 9월 24일 (화) 오후 1:36");
+  assert.equal(result.viewCount, 95);
+  assert.match(result.bodyHtml, /docs\.google\.com/);
+  assert.match(result.bodyText, /docs\.google\.com/);
+  assert.equal(result.bodyHtml.includes("attach_container"), false);
+  assert.equal(result.qnaTarget, undefined);
+});
+
+test("LMS assignment submit view fixture parses submit button and delete spec", async () => {
+  const html = await readFixture("lms/assignment-submit-view.html");
+  const submitButton = parseSubmitButton(html);
+  const deleteSpec = parseDeleteSpec(html);
+
+  assert.deepEqual(submitButton, {
+    hasSubmitButton: true,
+    submitButtonLabel: "수정하기",
+    submitPopupUrl:
+      "https://lms.mju.ac.kr/ilos/cls/st/report/report_update_pop.acl?RT_SEQ=8709455"
+  });
+  assert.deepEqual(deleteSpec, {
+    hasDeleteButton: true,
+    deleteButtonLabel: "삭제하기",
+    submitCheckUrl:
+      "https://lms.mju.ac.kr/ilos/cls/st/report/report_submit_check.acl",
+    submitCheckDiv: "report",
+    deleteUrl: "https://lms.mju.ac.kr/ilos/cls/st/report/report_delete.acl",
+    deleteContentSeq: "CONTENT123"
+  });
+});
+
+test("LMS assignment submit popup fixture parses update-submit spec", async () => {
+  const html = await readFixture("lms/assignment-submit-popup.html");
+  const result = parseSubmitPopupSpec(
+    html,
+    "https://lms.mju.ac.kr/ilos/cls/st/report/report_update_pop.acl?RT_SEQ=8709455",
+    "수정하기"
+  );
+
+  assert.deepEqual(result, {
+    mode: "update-submit",
+    submitPopupUrl:
+      "https://lms.mju.ac.kr/ilos/cls/st/report/report_update_pop.acl?RT_SEQ=8709455",
+    submitButtonLabel: "수정하기",
+    requiresTextInput: true,
+    textFieldName: "TXT",
+    hasFilePicker: true,
+    uploadUrl: "https://lms.mju.ac.kr/ilos/co/efile_upload_multiple2.acl",
+    uploadPath: "/2026/report",
+    uploadPfStFlag: "2",
+    submitCheckUrl:
+      "https://lms.mju.ac.kr/ilos/cls/st/report/report_submit_check.acl",
+    submitCheckDiv: "report",
+    submitUrl: "https://lms.mju.ac.kr/ilos/cls/st/report/report_update.acl",
+    submitContentSeq: "CONTENT123",
+    existingFilesContentSeq: "CONTENT123",
+    existingTextHtml: "기존 제출 본문",
+    existingTextText: "기존 제출 본문"
   });
 });
 
