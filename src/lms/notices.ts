@@ -164,6 +164,33 @@ function parseNoticeBodyHtml(html: string): { title: string; bodyHtml: string; b
   };
 }
 
+export function parseNoticeDetailHtml(html: string): {
+  title: string;
+  bodyHtml: string;
+  bodyText: string;
+  author?: string;
+  postedAt?: string;
+  expireAt?: string;
+  viewCount?: number;
+} {
+  const meta = parseDetailMeta(html);
+  const body = parseNoticeBodyHtml(html);
+  const author = meta.get("작성자");
+  const postedAt = meta.get("게시일");
+  const expireAt = meta.get("공지 만료일");
+  const viewCount = parsePositiveInt(meta.get("조회수"));
+
+  return {
+    title: body.title,
+    bodyHtml: body.bodyHtml,
+    bodyText: body.bodyText,
+    ...(author ? { author } : {}),
+    ...(postedAt ? { postedAt } : {}),
+    ...(expireAt ? { expireAt } : {}),
+    ...(viewCount !== undefined ? { viewCount } : {})
+  };
+}
+
 export async function listCourseNotices(
   client: MjuLmsSsoClient,
   options: ListNoticesOptions
@@ -212,9 +239,8 @@ export async function getCourseNotice(
     encoding: "utf-8"
   });
 
-  const meta = parseDetailMeta(response.text);
-  const body = parseNoticeBodyHtml(response.text);
-  if (!body.title) {
+  const parsed = parseNoticeDetailHtml(response.text);
+  if (!parsed.title) {
     throw new Error(`공지 상세를 읽지 못했습니다. articleId=${options.articleId}`);
   }
 
@@ -223,24 +249,20 @@ export async function getCourseNotice(
     ? await fetchAttachments(client, attachmentRequest)
     : [];
   const courseTitle = classroom.courseTitle;
-  const author = meta.get("작성자");
-  const postedAt = meta.get("게시일");
-  const expireAt = meta.get("공지 만료일");
-  const viewCount = parsePositiveInt(meta.get("조회수"));
   const contentSeq = attachmentRequest?.contentSeq;
 
   return {
     kjkey: options.kjkey,
     articleId: options.articleId,
-    title: body.title,
-    bodyHtml: body.bodyHtml,
-    bodyText: body.bodyText,
+    title: parsed.title,
+    bodyHtml: parsed.bodyHtml,
+    bodyText: parsed.bodyText,
     attachments,
     ...(courseTitle ? { courseTitle } : {}),
-    ...(author ? { author } : {}),
-    ...(postedAt ? { postedAt } : {}),
-    ...(expireAt ? { expireAt } : {}),
-    ...(viewCount !== undefined ? { viewCount } : {}),
+    ...(parsed.author ? { author: parsed.author } : {}),
+    ...(parsed.postedAt ? { postedAt: parsed.postedAt } : {}),
+    ...(parsed.expireAt ? { expireAt: parsed.expireAt } : {}),
+    ...(parsed.viewCount !== undefined ? { viewCount: parsed.viewCount } : {}),
     ...(contentSeq ? { contentSeq } : {})
   };
 }

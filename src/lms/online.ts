@@ -217,6 +217,24 @@ export function parseOnlineWeekListHtml(html: string): OnlineWeekSummary[] {
     }));
 }
 
+export function parseOnlineWeekDetailHtml(html: string): {
+  attendanceLabel?: string;
+  studyPeriod?: string;
+  warningMessages: string[];
+  launchForm: OnlineLearningLaunchForm;
+  items: OnlineLearningItem[];
+} {
+  const meta = parseOnlineInfoMap(html);
+
+  return {
+    warningMessages: parseWarningMessages(html),
+    launchForm: parseLaunchForm(html),
+    items: parseOnlineItems(html),
+    ...(meta.get("출석부 반영일") ? { attendanceLabel: meta.get("출석부 반영일") } : {}),
+    ...(meta.get("학습인정기간") ? { studyPeriod: meta.get("학습인정기간") } : {})
+  };
+}
+
 export async function listCourseOnlineWeeks(
   client: MjuLmsSsoClient,
   options: ListOnlineWeeksOptions
@@ -244,27 +262,22 @@ export async function getCourseOnlineWeek(
   const response = await client.getPage(
     `${STUDENT_ONLINE_VIEW_URL}?LECTURE_WEEKS=${options.lectureWeeks}`
   );
-  const meta = parseOnlineInfoMap(response.text);
-  const launchForm = parseLaunchForm(response.text);
-  const warningMessages = parseWarningMessages(response.text);
-  const items = parseOnlineItems(response.text);
+  const parsed = parseOnlineWeekDetailHtml(response.text);
   const courseTitle = classroom.courseTitle;
-  const attendanceLabel = meta.get("출석부 반영일");
-  const studyPeriod = meta.get("학습인정기간");
 
   return {
     kjkey: options.kjkey,
     lectureWeeks: options.lectureWeeks,
-    warningMessages,
-    launchForm,
-    items,
+    warningMessages: parsed.warningMessages,
+    launchForm: parsed.launchForm,
+    items: parsed.items,
     ...(courseTitle ? { courseTitle } : {}),
     ...(summary?.title ? { title: summary.title } : {}),
     ...(summary?.week !== undefined ? { week: summary.week } : {}),
     ...(summary?.weekLabel ? { weekLabel: summary.weekLabel } : {}),
     ...(summary?.statusLabel ? { statusLabel: summary.statusLabel } : {}),
     ...(summary?.statusText ? { statusText: summary.statusText } : {}),
-    ...(attendanceLabel ? { attendanceLabel } : {}),
-    ...(studyPeriod ? { studyPeriod } : {})
+    ...(parsed.attendanceLabel ? { attendanceLabel: parsed.attendanceLabel } : {}),
+    ...(parsed.studyPeriod ? { studyPeriod: parsed.studyPeriod } : {})
   };
 }

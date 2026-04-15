@@ -3,17 +3,28 @@ import fs from "node:fs/promises";
 import test from "node:test";
 
 import { parseAssignmentListHtml } from "../src/lms/assignments.ts";
+import { parseActivityListItems } from "../src/lms/activity-list.ts";
 import {
   parseDeleteSpec,
   parseSubmitButton,
   parseSubmitPopupSpec
 } from "../src/lms/assignment-submission-check.ts";
+import { parseAssignmentDetailHtml } from "../src/lms/assignments.ts";
+import { parseAttachmentsFromHtml } from "../src/lms/attachments.ts";
+import {
+  parseAvailableTermsFromCourseForm,
+  parseCoursesFromRegisterList
+} from "../src/lms/courses.ts";
 import {
   parseMaterialDetailHtml,
   parseMaterialListHtml
 } from "../src/lms/materials.ts";
 import { parseNoticeListHtml } from "../src/lms/notices.ts";
-import { parseOnlineWeekListHtml } from "../src/lms/online.ts";
+import { parseNoticeDetailHtml } from "../src/lms/notices.ts";
+import {
+  parseOnlineWeekDetailHtml,
+  parseOnlineWeekListHtml
+} from "../src/lms/online.ts";
 import {
   parseCurrentGradesPage,
   parseGraduationPage,
@@ -102,6 +113,169 @@ test("LMS material detail fixture parses body and metadata without attachment no
   assert.match(result.bodyText, /docs\.google\.com/);
   assert.equal(result.bodyHtml.includes("attach_container"), false);
   assert.equal(result.qnaTarget, undefined);
+});
+
+test("LMS notice detail fixture parses metadata and content body", async () => {
+  const html = await readFixture("lms/notice-detail.html");
+  const result = parseNoticeDetailHtml(html);
+
+  assert.deepEqual(result, {
+    title: "수업 운영 안내",
+    bodyHtml: "<p>공지 본문입니다.</p>",
+    bodyText: "공지 본문입니다.",
+    author: "김교수",
+    postedAt: "2026-04-15",
+    expireAt: "2026-04-30",
+    viewCount: 77
+  });
+});
+
+test("LMS assignment detail fixture parses prompt meta and existing submission state", async () => {
+  const html = await readFixture("lms/assignment-detail.html");
+  const result = parseAssignmentDetailHtml(html, {
+    attachments: [
+      {
+        name: "assignment-guide.pdf",
+        downloadUrl: "https://lms.mju.ac.kr/files/guide.pdf"
+      }
+    ],
+    submissionAttachments: [
+      {
+        name: "my-report.pdf",
+        downloadUrl: "https://lms.mju.ac.kr/files/report.pdf"
+      }
+    ]
+  });
+
+  assert.equal(result.title, "4주차 과제");
+  assert.equal(result.submissionMethod, "온라인");
+  assert.equal(result.submissionFormat, "텍스트, 파일");
+  assert.equal(result.openAt, "2026-04-10 09:00");
+  assert.equal(result.dueAt, "2026-04-20 23:59");
+  assert.equal(result.points, "10");
+  assert.equal(result.scoreVisibility, "예");
+  assert.equal(result.contentSeq, "PROMPT123");
+  assert.equal(result.attachments.length, 1);
+  assert.deepEqual(result.submission, {
+    status: "제출완료",
+    submittedAt: "2026-04-14 12:30",
+    text: "기존 제출 본문입니다.",
+    contentSeq: "SUBMIT456",
+    attachments: [
+      {
+        name: "my-report.pdf",
+        downloadUrl: "https://lms.mju.ac.kr/files/report.pdf"
+      }
+    ]
+  });
+});
+
+test("LMS attachment fixture parses downloadable attachments", async () => {
+  const html = await readFixture("lms/attachments.html");
+  const result = parseAttachmentsFromHtml(html);
+
+  assert.deepEqual(result, [
+    {
+      name: "강의계획서.pdf",
+      downloadUrl: "https://lms.mju.ac.kr/ilos/co/download.acl?file=1",
+      previewUrl: "https://lms.mju.ac.kr/ilos/co/preview.acl?file=1",
+      sizeLabel: "120 KB",
+      fileType: "pdf"
+    }
+  ]);
+});
+
+test("LMS course form fixture parses available terms", async () => {
+  const html = await readFixture("lms/course-form.html");
+  const result = parseAvailableTermsFromCourseForm(html);
+
+  assert.deepEqual(result, [
+    { order: 0, year: 2026, term: 1, key: "2026-1" },
+    { order: 1, year: 2025, term: 2, key: "2025-2" }
+  ]);
+});
+
+test("LMS register list fixture parses structured course summaries", async () => {
+  const html = await readFixture("lms/course-register-list.html");
+  const result = parseCoursesFromRegisterList(html, {
+    order: 0,
+    year: 2026,
+    term: 1,
+    key: "2026-1"
+  });
+
+  assert.deepEqual(result, [
+    {
+      kjkey: "A20261CS1010101",
+      title: "운영체제",
+      courseCode: "CS101-01",
+      professor: "홍길동",
+      year: 2026,
+      term: 1,
+      termLabel: "2026년 1학기",
+      classroomLabel: "강의실",
+      enterPath: "/ilos/cls/st/co/eclass_room2.acl",
+      coverImageUrl: "https://lms.mju.ac.kr/ext/ilos/images/cover/sample.png"
+    }
+  ]);
+});
+
+test("LMS online detail fixture parses launch form, warnings, and learning items", async () => {
+  const html = await readFixture("lms/online-detail.html");
+  const result = parseOnlineWeekDetailHtml(html);
+
+  assert.equal(result.attendanceLabel, "학습 종료 후 반영");
+  assert.equal(result.studyPeriod, "2026-04-14 ~ 2026-04-20");
+  assert.deepEqual(result.warningMessages, ["모바일 학습은 일부 제한될 수 있습니다."]);
+  assert.deepEqual(result.launchForm, {
+    action: "https://lms.mju.ac.kr/ilos/cls/st/online/online_learning_form.acl",
+    lectureWeeks: 9921329,
+    kjkey: "A20261CS1010101",
+    kjLectType: "NORMAL"
+  });
+  assert.deepEqual(result.items, [
+    {
+      linkSeq: 6,
+      title: "1차시 강의",
+      progressPercent: 75,
+      inPeriodProgressPercent: 75,
+      outOfPeriodProgressPercent: 100,
+      learningTime: "15분 / 20분",
+      attendanceTime: "15분",
+      qnaCount: 2,
+      stampCount: 1,
+      thumbnailUrl: "https://lms.mju.ac.kr/thumbs/1.png"
+    }
+  ]);
+});
+
+test("LMS activity list fixture parses mixed activity entries", async () => {
+  const html = await readFixture("lms/activity-list.html");
+  const result = parseActivityListItems(html);
+
+  assert.deepEqual(result, [
+    {
+      menuId: "report",
+      activityId: 8709455,
+      title: "4주차 과제",
+      hasIndicator: true,
+      week: 4,
+      weekLabel: "4주차",
+      statusLabel: "제출상태",
+      statusText: "제출완료",
+      attachmentCount: 1
+    },
+    {
+      menuId: "lecture_weeks",
+      activityId: 9921329,
+      title: "5주차 온라인 학습",
+      hasIndicator: false,
+      week: 5,
+      weekLabel: "5주차",
+      statusLabel: "학습상태",
+      statusText: "학습 중"
+    }
+  ]);
 });
 
 test("LMS assignment submit view fixture parses submit button and delete spec", async () => {

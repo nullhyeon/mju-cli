@@ -176,6 +176,51 @@ function parseSubmissionInfo(
   };
 }
 
+export function parseAssignmentDetailHtml(
+  html: string,
+  options: {
+    attachments?: AssignmentDetailResult["attachments"];
+    submissionAttachments?: AssignmentSubmissionInfo["attachments"];
+  } = {}
+): Omit<AssignmentDetailResult, "kjkey" | "rtSeq" | "courseTitle"> {
+  const meta = parseDetailMetaMap(html);
+  const body = parseAssignmentBody(html);
+  const promptAttachmentRequest = extractAttachmentRequestParams(html);
+  const submissionAttachmentRequest = extractSubmissionAttachmentRequest(
+    html,
+    promptAttachmentRequest
+  );
+  const attachments = options.attachments ?? [];
+  const submissionAttachments = options.submissionAttachments ?? [];
+  const submission = parseSubmissionInfo(
+    html,
+    submissionAttachmentRequest?.contentSeq,
+    submissionAttachments
+  );
+  const submissionMethod = meta.get("제출방식");
+  const submissionFormat = meta.get("제출형태");
+  const openAt = meta.get("공개일");
+  const dueAt = meta.get("마감일");
+  const points = meta.get("배점");
+  const scoreVisibility = meta.get("점수공개");
+  const contentSeq = promptAttachmentRequest?.contentSeq;
+
+  return {
+    title: body.title,
+    bodyHtml: body.bodyHtml,
+    bodyText: body.bodyText,
+    attachments,
+    ...(submissionMethod ? { submissionMethod } : {}),
+    ...(submissionFormat ? { submissionFormat } : {}),
+    ...(openAt ? { openAt } : {}),
+    ...(dueAt ? { dueAt } : {}),
+    ...(points ? { points } : {}),
+    ...(scoreVisibility ? { scoreVisibility } : {}),
+    ...(contentSeq ? { contentSeq } : {}),
+    ...(submission ? { submission } : {})
+  };
+}
+
 export async function listCourseAssignments(
   client: MjuLmsSsoClient,
   options: ListAssignmentsOptions
@@ -205,12 +250,6 @@ export async function getCourseAssignment(
     `${STUDENT_REPORT_VIEW_URL}?RT_SEQ=${options.rtSeq}`
   );
 
-  const meta = parseDetailMetaMap(response.text);
-  const body = parseAssignmentBody(response.text);
-  if (!body.title) {
-    throw new Error(`과제 상세를 읽지 못했습니다. rtSeq=${options.rtSeq}`);
-  }
-
   const promptAttachmentRequest = extractAttachmentRequestParams(response.text);
   const submissionAttachmentRequest = extractSubmissionAttachmentRequest(
     response.text,
@@ -223,35 +262,30 @@ export async function getCourseAssignment(
   const submissionAttachments = submissionAttachmentRequest
     ? await fetchAttachments(client, submissionAttachmentRequest)
     : [];
-  const submission = parseSubmissionInfo(
-    response.text,
-    submissionAttachmentRequest?.contentSeq,
+  const parsed = parseAssignmentDetailHtml(response.text, {
+    attachments,
     submissionAttachments
-  );
+  });
+  if (!parsed.title) {
+    throw new Error(`과제 상세를 읽지 못했습니다. rtSeq=${options.rtSeq}`);
+  }
   const courseTitle = classroom.courseTitle;
-  const submissionMethod = meta.get("제출방식");
-  const submissionFormat = meta.get("제출형태");
-  const openAt = meta.get("공개일");
-  const dueAt = meta.get("마감일");
-  const points = meta.get("배점");
-  const scoreVisibility = meta.get("점수공개");
-  const contentSeq = promptAttachmentRequest?.contentSeq;
 
   return {
     kjkey: options.kjkey,
     rtSeq: options.rtSeq,
-    title: body.title,
-    bodyHtml: body.bodyHtml,
-    bodyText: body.bodyText,
-    attachments,
+    title: parsed.title,
+    bodyHtml: parsed.bodyHtml,
+    bodyText: parsed.bodyText,
+    attachments: parsed.attachments,
     ...(courseTitle ? { courseTitle } : {}),
-    ...(submissionMethod ? { submissionMethod } : {}),
-    ...(submissionFormat ? { submissionFormat } : {}),
-    ...(openAt ? { openAt } : {}),
-    ...(dueAt ? { dueAt } : {}),
-    ...(points ? { points } : {}),
-    ...(scoreVisibility ? { scoreVisibility } : {}),
-    ...(contentSeq ? { contentSeq } : {}),
-    ...(submission ? { submission } : {})
+    ...(parsed.submissionMethod ? { submissionMethod: parsed.submissionMethod } : {}),
+    ...(parsed.submissionFormat ? { submissionFormat: parsed.submissionFormat } : {}),
+    ...(parsed.openAt ? { openAt: parsed.openAt } : {}),
+    ...(parsed.dueAt ? { dueAt: parsed.dueAt } : {}),
+    ...(parsed.points ? { points: parsed.points } : {}),
+    ...(parsed.scoreVisibility ? { scoreVisibility: parsed.scoreVisibility } : {}),
+    ...(parsed.contentSeq ? { contentSeq: parsed.contentSeq } : {}),
+    ...(parsed.submission ? { submission: parsed.submission } : {})
   };
 }
