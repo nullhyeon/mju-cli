@@ -21,6 +21,8 @@ interface DoctorCheck {
   summary: string;
   details?: string;
   path?: string;
+  suggestedFix?: string;
+  suggestedCommand?: string;
 }
 
 interface DoctorResult {
@@ -34,7 +36,14 @@ interface DoctorResult {
     errors: number;
   };
   checks: DoctorCheck[];
+  nextSteps: string[];
 }
+
+const STATUS_LABELS: Record<CheckStatus, string> = {
+  pass: "정상",
+  warn: "주의",
+  error: "오류"
+};
 
 function createCheck(
   status: CheckStatus,
@@ -42,7 +51,11 @@ function createCheck(
   area: string,
   summary: string,
   details?: string,
-  filePath?: string
+  filePath?: string,
+  guidance: {
+    suggestedFix?: string;
+    suggestedCommand?: string;
+  } = {}
 ): DoctorCheck {
   return {
     id,
@@ -50,7 +63,9 @@ function createCheck(
     status,
     summary,
     ...(details ? { details } : {}),
-    ...(filePath ? { path: filePath } : {})
+    ...(filePath ? { path: filePath } : {}),
+    ...(guidance.suggestedFix ? { suggestedFix: guidance.suggestedFix } : {}),
+    ...(guidance.suggestedCommand ? { suggestedCommand: guidance.suggestedCommand } : {})
   };
 }
 
@@ -81,6 +96,33 @@ function summarizeChecks(checks: DoctorCheck[]): DoctorResult["summary"] {
     },
     { passed: 0, warnings: 0, errors: 0 }
   );
+}
+
+export function buildNextSteps(checks: DoctorCheck[]): string[] {
+  const seen = new Set<string>();
+  const steps: string[] = [];
+
+  for (const check of checks) {
+    if (!check.suggestedFix && !check.suggestedCommand) {
+      continue;
+    }
+
+    const line = [
+      check.suggestedFix,
+      check.suggestedCommand ? `추천 명령: ${check.suggestedCommand}` : undefined
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    if (!line || seen.has(line)) {
+      continue;
+    }
+
+    seen.add(line);
+    steps.push(line);
+  }
+
+  return steps;
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {
@@ -148,7 +190,12 @@ async function ensureStorageReady(runtime: ReturnType<typeof resolveRuntimeConfi
         "storage",
         "상태 저장 디렉터리에 쓰기 검증에 실패했습니다.",
         error instanceof Error ? error.message : String(error),
-        runtime.storage.stateDir
+        runtime.storage.stateDir,
+        {
+          suggestedFix:
+            "쓰기 가능한 경로를 사용하도록 앱 데이터 디렉터리를 바꾸거나 현재 경로 권한을 확인하세요.",
+          suggestedCommand: "mju --app-dir <쓰기 가능한 경로> doctor"
+        }
       )
     );
   }
@@ -170,7 +217,14 @@ async function inspectAuth(appDir: string): Promise<DoctorCheck[]> {
       vaultSupport.supported
         ? "운영체제 비밀번호 저장소를 사용할 수 있습니다."
         : "현재 운영체제는 저장 로그인 비밀번호 보관소를 지원하지 않습니다.",
-      `provider=${vaultSupport.label}`
+      `provider=${vaultSupport.label}`,
+      undefined,
+      vaultSupport.supported
+        ? {}
+        : {
+            suggestedFix:
+              "저장 로그인 기능이 제한될 수 있습니다. 가능하면 지원 운영체제에서 다시 설정하세요."
+          }
     )
   );
 
@@ -186,7 +240,13 @@ async function inspectAuth(appDir: string): Promise<DoctorCheck[]> {
           ? "저장된 로그인 프로필을 찾았습니다."
           : "저장된 로그인 프로필이 없습니다.",
         status.profileExists ? `userId=${status.storedUserId}` : undefined,
-        status.profileFile
+        status.profileFile,
+        status.profileExists
+          ? {}
+          : {
+              suggestedFix: "학교 계정으로 다시 로그인해 저장 프로필을 만드세요.",
+              suggestedCommand: "mju auth login --id <학번>"
+            }
       )
     );
 
@@ -204,7 +264,19 @@ async function inspectAuth(appDir: string): Promise<DoctorCheck[]> {
             ? "운영체제 저장소에 비밀번호가 보관되어 있습니다."
             : "운영체제 저장소에 비밀번호가 없습니다."
           : "저장된 로그인 정보가 없어 비밀번호도 아직 없습니다.",
-        status.credentialTarget ? `target=${status.credentialTarget}` : "먼저 `mju auth login`을 실행해주세요."
+        status.credentialTarget ? `target=${status.credentialTarget}` : "먼저 `mju auth login`을 실행해주세요.",
+        undefined,
+        status.profileExists && !status.passwordStored
+          ? {
+              suggestedFix: "비밀번호가 저장되어 있지 않습니다. 다시 로그인해 비밀번호를 저장하세요.",
+              suggestedCommand: "mju auth login --id <학번>"
+            }
+          : !status.profileExists
+            ? {
+                suggestedFix: "학교 계정으로 다시 로그인해 저장 프로필을 만드세요.",
+                suggestedCommand: "mju auth login --id <학번>"
+              }
+            : {}
       )
     );
   } catch (error: unknown) {
@@ -215,7 +287,11 @@ async function inspectAuth(appDir: string): Promise<DoctorCheck[]> {
         "auth",
         "저장 로그인 상태를 읽지 못했습니다.",
         error instanceof Error ? error.message : String(error),
-        lmsConfig.profileFile
+        lmsConfig.profileFile,
+        {
+          suggestedFix: "저장된 로그인 상태를 초기화한 뒤 다시 로그인해 보세요.",
+          suggestedCommand: "mju auth forget"
+        }
       )
     );
   }
@@ -237,7 +313,12 @@ async function inspectSessionFile(
       "sessions",
       `${label} 세션 파일이 없습니다.`,
       "필요 시 로그인 시점에 새로 생성됩니다.",
-      sessionFile
+      sessionFile,
+      expectedUserId
+        ? {
+            suggestedFix: `${label} 관련 명령을 처음 실행하면 세션이 자동으로 다시 생성됩니다.`
+          }
+        : {}
     );
   }
 
@@ -246,7 +327,18 @@ async function inspectSessionFile(
     const payload = JSON.parse(raw) as Record<string, unknown>;
     const validationError = validator(payload);
     if (validationError) {
-      return createCheck("error", id, "sessions", `${label} 세션 파일 형식이 올바르지 않습니다.`, validationError, sessionFile);
+      return createCheck(
+        "error",
+        id,
+        "sessions",
+        `${label} 세션 파일 형식이 올바르지 않습니다.`,
+        validationError,
+        sessionFile,
+        {
+          suggestedFix: "손상되었거나 오래된 세션일 수 있습니다. 세션을 지우고 다시 로그인하세요.",
+          suggestedCommand: "mju auth forget"
+        }
+      );
     }
 
     const storedUserId = typeof payload.userId === "string" ? payload.userId : undefined;
@@ -257,7 +349,12 @@ async function inspectSessionFile(
         "sessions",
         `${label} 세션이 현재 로그인 사용자와 일치하지 않습니다.`,
         `stored=${storedUserId}, expected=${expectedUserId}`,
-        sessionFile
+        sessionFile,
+        {
+          suggestedFix:
+            "다른 사용자 세션이 남아 있습니다. 모든 저장 세션을 지우고 현재 계정으로 다시 로그인하세요.",
+          suggestedCommand: "mju auth forget"
+        }
       );
     }
 
@@ -276,7 +373,11 @@ async function inspectSessionFile(
       "sessions",
       `${label} 세션 파일을 읽지 못했습니다.`,
       error instanceof Error ? error.message : String(error),
-      sessionFile
+      sessionFile,
+      {
+        suggestedFix: "세션 파일을 초기화한 뒤 다시 로그인해 상태를 복구하세요.",
+        suggestedCommand: "mju auth forget"
+      }
     );
   }
 }
@@ -378,6 +479,13 @@ async function inspectPlaywrightRuntime(): Promise<DoctorCheck> {
         "playwright-browser",
         "browser",
         "Playwright는 설치되어 있지만 Chromium 실행 경로를 찾지 못했습니다."
+        ,
+        undefined,
+        undefined,
+        {
+          suggestedFix: "브라우저 런타임을 다시 설치해 동영상 재생 기능을 복구하세요.",
+          suggestedCommand: "npx playwright install chromium"
+        }
       );
     }
 
@@ -388,7 +496,11 @@ async function inspectPlaywrightRuntime(): Promise<DoctorCheck> {
         "browser",
         "Playwright 패키지는 있지만 Chromium 브라우저가 준비되지 않았습니다.",
         "필요하면 `npx playwright install chromium` 으로 브라우저를 설치해주세요.",
-        executablePath
+        executablePath,
+        {
+          suggestedFix: "동영상 재생 기능이 필요하면 Chromium 브라우저 런타임을 설치하세요.",
+          suggestedCommand: "npx playwright install chromium"
+        }
       );
     }
 
@@ -406,7 +518,13 @@ async function inspectPlaywrightRuntime(): Promise<DoctorCheck> {
       "playwright-browser",
       "browser",
       "Playwright 런타임을 불러오지 못했습니다.",
-      error instanceof Error ? error.message : String(error)
+      error instanceof Error ? error.message : String(error),
+      undefined,
+      {
+        suggestedFix:
+          "의존성 설치 상태를 확인한 뒤 Playwright 브라우저 런타임을 다시 설치하세요.",
+        suggestedCommand: "npm install && npx playwright install chromium"
+      }
     );
   }
 }
@@ -417,16 +535,22 @@ async function runDoctor(appDir: string | undefined): Promise<DoctorResult> {
   const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
 
   checks.push(
-    createCheck(
-      nodeMajor >= 22 ? "pass" : "error",
-      "node-version",
-      "environment",
-      nodeMajor >= 22
-        ? "지원되는 Node.js 버전입니다."
-        : "Node.js 22 이상이 필요합니다.",
-      `current=${process.version}`
-    )
-  );
+      createCheck(
+        nodeMajor >= 22 ? "pass" : "error",
+        "node-version",
+        "environment",
+        nodeMajor >= 22
+          ? "지원되는 Node.js 버전입니다."
+          : "Node.js 22 이상이 필요합니다.",
+        `current=${process.version}`,
+        undefined,
+        nodeMajor >= 22
+          ? {}
+          : {
+              suggestedFix: "Node.js 런타임을 22 이상으로 업데이트한 뒤 다시 실행하세요."
+            }
+      )
+    );
 
   checks.push(
     createCheck(
@@ -452,18 +576,23 @@ async function runDoctor(appDir: string | undefined): Promise<DoctorResult> {
     platform: process.platform,
     appDir: runtime.appDir,
     summary,
-    checks
+    checks,
+    nextSteps: buildNextSteps(
+      checks.filter((check) => check.status === "error" || check.status === "warn")
+    )
   };
 }
 
-function toTableRows(result: DoctorResult): Array<Record<string, string>> {
+export function toTableRows(result: DoctorResult): Array<Record<string, string>> {
   return result.checks.map((check) => ({
-    status: check.status,
-    area: check.area,
-    id: check.id,
-    summary: check.summary,
-    details: check.details ?? "",
-    path: check.path ?? ""
+    상태: STATUS_LABELS[check.status],
+    영역: check.area,
+    항목: check.id,
+    요약: check.summary,
+    세부: check.details ?? "",
+    "다음 조치": check.suggestedFix ?? "",
+    "추천 명령": check.suggestedCommand ?? "",
+    경로: check.path ?? ""
   }));
 }
 
@@ -476,6 +605,12 @@ export function createDoctorCommand(getGlobals: () => GlobalOptions): Command {
 
       if (globals.format === "table") {
         printData(toTableRows(result), "table");
+        if (result.nextSteps.length > 0) {
+          console.log("\n[권장 복구 순서]");
+          for (const [index, step] of result.nextSteps.entries()) {
+            console.log(`${index + 1}. ${step}`);
+          }
+        }
         return;
       }
 
