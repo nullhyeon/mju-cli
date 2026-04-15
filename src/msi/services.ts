@@ -161,7 +161,7 @@ function parseTimetableEntries(html: string): MsiTimetableEntry[] {
     .filter((entry) => entry.courseTitle);
 }
 
-function parseTimetablePage(html: string): MsiTimetableResult {
+export function parseTimetablePage(html: string): MsiTimetableResult {
   const $ = load(html);
   const year = parseInteger(
     $('form[name="form1"] input[name="year"]').first().attr("value")
@@ -209,7 +209,7 @@ function extractCurrentGradesTitleMeta(html: string): {
   return result;
 }
 
-function parseCurrentGradesPage(html: string): MsiCurrentGradesResult {
+export function parseCurrentGradesPage(html: string): MsiCurrentGradesResult {
   const $ = load(html);
   const items: MsiCurrentGradeItem[] = [];
 
@@ -468,7 +468,7 @@ function parseGraduationCreditItems(sectionHtml: string): MsiGraduationCreditIte
   }));
 }
 
-function parseGraduationPage(html: string): MsiGraduationRequirementsResult {
+export function parseGraduationPage(html: string): MsiGraduationRequirementsResult {
   const $ = load(html);
   const personalCard = $(".card-item.basic")
     .filter(

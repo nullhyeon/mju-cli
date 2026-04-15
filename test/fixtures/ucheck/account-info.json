@@ -1,0 +1,23 @@
+{
+  "result_code": "success",
+  "data": {
+    "account_id": "60123456",
+    "account_role": "student",
+    "name": "홍길동",
+    "student_no": "60123456",
+    "base_yearterm": {
+      "lecture_year": 2026,
+      "lecture_term": 1
+    },
+    "yearterms": [
+      {
+        "lecture_year": 2026,
+        "lecture_term": 1
+      },
+      {
+        "lecture_year": 2025,
+        "lecture_term": 2
+      }
+    ]
+  }
+}

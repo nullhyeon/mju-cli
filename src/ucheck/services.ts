@@ -141,7 +141,7 @@ function normalizeLookupValue(value: string): string {
     .replace(/[\[\](){}\-_.]/g, "");
 }
 
-function parseJsonEnvelope<T>(text: string, label: string): T {
+export function parseJsonEnvelope<T>(text: string, label: string): T {
   let parsed: UcheckEnvelope<T>;
   try {
     parsed = JSON.parse(text) as UcheckEnvelope<T>;
@@ -296,11 +296,8 @@ export async function getUcheckAccountInfo(
   return fetchUcheckAccountInfo(client);
 }
 
-async function fetchUcheckAccountInfo(
-  client: MjuUcheckClient
-): Promise<UcheckAccountInfo> {
-  const response = await client.postForm(UCHECK_ACCOUNT_INFO_URL, {});
-  const raw = parseJsonEnvelope<UcheckAccountInfoRaw>(response.text, "UCheck 계정 정보");
+export function parseUcheckAccountInfoResponse(text: string): UcheckAccountInfo {
+  const raw = parseJsonEnvelope<UcheckAccountInfoRaw>(text, "UCheck 계정 정보");
   const lectureYear = raw.base_yearterm?.lecture_year;
   const lectureTerm = raw.base_yearterm?.lecture_term;
 
@@ -329,6 +326,13 @@ async function fetchUcheckAccountInfo(
   };
 }
 
+async function fetchUcheckAccountInfo(
+  client: MjuUcheckClient
+): Promise<UcheckAccountInfo> {
+  const response = await client.postForm(UCHECK_ACCOUNT_INFO_URL, {});
+  return parseUcheckAccountInfoResponse(response.text);
+}
+
 export async function listUcheckLectures(
   client: MjuUcheckClient,
   credentials: ResolvedLmsCredentials,
@@ -339,16 +343,8 @@ export async function listUcheckLectures(
   return fetchUcheckLectures(client, year, term);
 }
 
-async function fetchUcheckLectures(
-  client: MjuUcheckClient,
-  year: number,
-  term: number
-): Promise<UcheckLectureSummary[]> {
-  const response = await client.postJson(UCHECK_LECTURE_LIST_URL, {
-    lecture_year: year,
-    lecture_term: term
-  });
-  const rows = parseJsonEnvelope<UcheckLectureRaw[]>(response.text, "UCheck 강의 목록");
+export function parseUcheckLectureListResponse(text: string): UcheckLectureSummary[] {
+  const rows = parseJsonEnvelope<UcheckLectureRaw[]>(text, "UCheck 강의 목록");
 
   return rows
     .map((row) => {
@@ -377,6 +373,18 @@ async function fetchUcheckLectures(
       } satisfies UcheckLectureSummary;
     })
     .filter((lecture): lecture is UcheckLectureSummary => lecture !== undefined);
+}
+
+async function fetchUcheckLectures(
+  client: MjuUcheckClient,
+  year: number,
+  term: number
+): Promise<UcheckLectureSummary[]> {
+  const response = await client.postJson(UCHECK_LECTURE_LIST_URL, {
+    lecture_year: year,
+    lecture_term: term
+  });
+  return parseUcheckLectureListResponse(response.text);
 }
 
 export async function getUcheckLectureContext(

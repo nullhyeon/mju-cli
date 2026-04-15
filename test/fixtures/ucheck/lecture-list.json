@@ -1,0 +1,23 @@
+{
+  "result_code": "success",
+  "data": [
+    {
+      "lecture_no": 12345,
+      "lecture_year": 2026,
+      "lecture_term": 1,
+      "curriculum_cd": "CS101",
+      "curriculum_nm": "운영체제",
+      "curdetail_cd": "01",
+      "teacher_nm": "홍길동",
+      "dept_nm": "컴퓨터공학과",
+      "total_lecture_time": "monday/09:00~10:15/공학관 101\nwednesday/09:00~10:15/공학관 101"
+    },
+    {
+      "lecture_no": 0,
+      "lecture_year": 2026,
+      "lecture_term": 1,
+      "curriculum_cd": "",
+      "curriculum_nm": ""
+    }
+  ]
+}
