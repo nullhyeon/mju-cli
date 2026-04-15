@@ -151,6 +151,34 @@ interface CollectDueAssignmentsOptions {
   includeSubmitted?: boolean;
 }
 
+export interface AssignmentCourseContext {
+  course: ScopedCourse;
+  courseTitle?: string;
+  assignments: AssignmentSummary[];
+}
+
+export interface LmsHelperDependencies {
+  getCourseAssignment: typeof getCourseAssignment;
+  getCourseOnlineWeek: typeof getCourseOnlineWeek;
+  listCourseAssignments: typeof listCourseAssignments;
+  listCourseMaterials: typeof listCourseMaterials;
+  listCourseNotices: typeof listCourseNotices;
+  listCourseOnlineWeeks: typeof listCourseOnlineWeeks;
+  listRegularTakenCourses: typeof listRegularTakenCourses;
+  resolveCourseReference: typeof resolveCourseReference;
+}
+
+const defaultHelperDependencies: LmsHelperDependencies = {
+  getCourseAssignment,
+  getCourseOnlineWeek,
+  listCourseAssignments,
+  listCourseMaterials,
+  listCourseNotices,
+  listCourseOnlineWeeks,
+  listRegularTakenCourses,
+  resolveCourseReference
+};
+
 function isIgnorableAssignmentDetailError(error: unknown): boolean {
   return (
     error instanceof Error &&
@@ -365,7 +393,8 @@ function isIncompleteOnlineWeek(items: { progressPercent?: number }[]): boolean 
 export async function resolveHelperCourseScope(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  options: ResolveCourseScopeOptions = {}
+  options: ResolveCourseScopeOptions = {},
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<CourseScopeResult> {
   const hasCourseSelector = Boolean(options.course?.trim() || options.kjkey?.trim());
   if (options.allCourses && hasCourseSelector) {
@@ -373,7 +402,7 @@ export async function resolveHelperCourseScope(
   }
 
   if (options.allCourses || !hasCourseSelector) {
-    const result = await listRegularTakenCourses(client, {
+    const result = await dependencies.listRegularTakenCourses(client, {
       userId: credentials.userId,
       password: credentials.password,
       allTerms: true
@@ -397,7 +426,7 @@ export async function resolveHelperCourseScope(
     };
   }
 
-  const resolvedCourse = await resolveCourseReference(client, credentials, {
+  const resolvedCourse = await dependencies.resolveCourseReference(client, credentials, {
     ...(options.course ? { course: options.course } : {}),
     ...(options.kjkey ? { kjkey: options.kjkey } : {})
   });
@@ -417,43 +446,65 @@ export async function resolveHelperCourseScope(
   };
 }
 
-export async function collectUnsubmittedAssignments(
+export async function loadAssignmentCourseContexts(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  courses: ScopedCourse[]
-): Promise<AggregateAssignmentItem[]> {
-  const aggregated: AggregateAssignmentItem[] = [];
+  courses: ScopedCourse[],
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
+): Promise<AssignmentCourseContext[]> {
+  const contexts: AssignmentCourseContext[] = [];
 
   for (const course of courses) {
-    const result = await listCourseAssignments(client, {
+    const result = await dependencies.listCourseAssignments(client, {
       userId: credentials.userId,
       password: credentials.password,
       kjkey: course.kjkey
     });
 
-    aggregated.push(
-      ...result.assignments
-        .filter((assignment) => assignment.isSubmitted === false)
-        .map((assignment) =>
-          toAggregateAssignment(course, assignment, result.courseTitle)
-        )
-    );
+    contexts.push({
+      course,
+      ...(result.courseTitle ? { courseTitle: result.courseTitle } : {}),
+      assignments: result.assignments
+    });
   }
 
-  return aggregated;
+  return contexts;
+}
+
+export function collectUnsubmittedAssignmentsFromContexts(
+  contexts: AssignmentCourseContext[]
+): AggregateAssignmentItem[] {
+  return contexts.flatMap((context) =>
+    context.assignments
+      .filter((assignment) => assignment.isSubmitted === false)
+      .map((assignment) =>
+        toAggregateAssignment(context.course, assignment, context.courseTitle)
+      )
+  );
+}
+
+export async function collectUnsubmittedAssignments(
+  client: MjuLmsSsoClient,
+  credentials: ResolvedLmsCredentials,
+  courses: ScopedCourse[],
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
+): Promise<AggregateAssignmentItem[]> {
+  const contexts = await loadAssignmentCourseContexts(client, credentials, courses, dependencies);
+  return collectUnsubmittedAssignmentsFromContexts(contexts);
 }
 
 async function listAllNoticesForCourse(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  course: ScopedCourse
+  course: ScopedCourse,
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<{ courseTitle?: string; notices: NoticeSummary[] }> {
   const notices: NoticeSummary[] = [];
   const seen = new Set<number>();
   let discoveredCourseTitle: string | undefined;
 
   for (let page = 1; page <= MAX_NOTICE_PAGES; page += 1) {
-    const result = await listCourseNotices(client, {
+    const result = await dependencies.listCourseNotices(client, {
       userId: credentials.userId,
       password: credentials.password,
       kjkey: course.kjkey,
@@ -487,12 +538,13 @@ async function listAllNoticesForCourse(
 export async function collectUnreadNotices(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  courses: ScopedCourse[]
+  courses: ScopedCourse[],
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<AggregateNoticeItem[]> {
   const aggregated: AggregateNoticeItem[] = [];
 
   for (const course of courses) {
-    const result = await listAllNoticesForCourse(client, credentials, course);
+    const result = await listAllNoticesForCourse(client, credentials, course, dependencies);
     aggregated.push(
       ...result.notices
         .filter((notice) => notice.isUnread)
@@ -506,19 +558,20 @@ export async function collectUnreadNotices(
 export async function collectIncompleteOnlineWeeks(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  courses: ScopedCourse[]
+  courses: ScopedCourse[],
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<AggregateOnlineWeekItem[]> {
   const aggregated: AggregateOnlineWeekItem[] = [];
 
   for (const course of courses) {
-    const result = await listCourseOnlineWeeks(client, {
+    const result = await dependencies.listCourseOnlineWeeks(client, {
       userId: credentials.userId,
       password: credentials.password,
       kjkey: course.kjkey
     });
 
     for (const week of result.weeks) {
-      const detail = await getCourseOnlineWeek(client, {
+      const detail = await dependencies.getCourseOnlineWeek(client, {
         userId: credentials.userId,
         password: credentials.password,
         kjkey: course.kjkey,
@@ -546,11 +599,12 @@ export async function collectIncompleteOnlineWeeks(
   return aggregated;
 }
 
-export async function collectDueAssignments(
+export async function collectDueAssignmentsFromContexts(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  courses: ScopedCourse[],
-  options: CollectDueAssignmentsOptions = {}
+  contexts: AssignmentCourseContext[],
+  options: CollectDueAssignmentsOptions = {},
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<DueAssignmentItem[]> {
   const effectiveDays = options.days ?? DEFAULT_DUE_DAYS;
   const includeSubmitted = options.includeSubmitted ?? false;
@@ -558,24 +612,18 @@ export async function collectDueAssignments(
   const deadline = new Date(now.getTime() + effectiveDays * 24 * 60 * 60 * 1000);
   const aggregated: DueAssignmentItem[] = [];
 
-  for (const course of courses) {
-    const result = await listCourseAssignments(client, {
-      userId: credentials.userId,
-      password: credentials.password,
-      kjkey: course.kjkey
-    });
-
-    const candidates = result.assignments.filter(
+  for (const context of contexts) {
+    const candidates = context.assignments.filter(
       (assignment) => includeSubmitted || assignment.isSubmitted === false
     );
 
     for (const assignment of candidates) {
       let detail;
       try {
-        detail = await getCourseAssignment(client, {
+        detail = await dependencies.getCourseAssignment(client, {
           userId: credentials.userId,
           password: credentials.password,
-          kjkey: course.kjkey,
+          kjkey: context.course.kjkey,
           rtSeq: assignment.rtSeq
         });
       } catch (error) {
@@ -595,7 +643,11 @@ export async function collectDueAssignments(
       }
 
       aggregated.push({
-        ...toAggregateAssignment(course, assignment, detail.courseTitle ?? result.courseTitle),
+        ...toAggregateAssignment(
+          context.course,
+          assignment,
+          detail.courseTitle ?? context.courseTitle
+        ),
         dueAt: detail.dueAt,
         dueAtIso: dueDate.toISOString(),
         hoursUntilDue: hoursUntil(dueDate, now)
@@ -606,13 +658,30 @@ export async function collectDueAssignments(
   return aggregated.sort((left, right) => left.dueAtIso.localeCompare(right.dueAtIso));
 }
 
+export async function collectDueAssignments(
+  client: MjuLmsSsoClient,
+  credentials: ResolvedLmsCredentials,
+  courses: ScopedCourse[],
+  options: CollectDueAssignmentsOptions = {},
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
+): Promise<DueAssignmentItem[]> {
+  const contexts = await loadAssignmentCourseContexts(client, credentials, courses, dependencies);
+  return collectDueAssignmentsFromContexts(client, credentials, contexts, options, dependencies);
+}
+
 export async function getUnsubmittedAssignments(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  options: ResolveCourseScopeOptions = {}
+  options: ResolveCourseScopeOptions = {},
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<UnsubmittedAssignmentsResult> {
-  const scope = await resolveHelperCourseScope(client, credentials, options);
-  const assignments = await collectUnsubmittedAssignments(client, credentials, scope.courses);
+  const scope = await resolveHelperCourseScope(client, credentials, options, dependencies);
+  const assignments = await collectUnsubmittedAssignments(
+    client,
+    credentials,
+    scope.courses,
+    dependencies
+  );
 
   return {
     scope: scope.mode,
@@ -624,15 +693,22 @@ export async function getUnsubmittedAssignments(
 export async function getDueAssignments(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  options: ResolveCourseScopeOptions & CollectDueAssignmentsOptions = {}
+  options: ResolveCourseScopeOptions & CollectDueAssignmentsOptions = {},
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<DueAssignmentsResult> {
-  const scope = await resolveHelperCourseScope(client, credentials, options);
+  const scope = await resolveHelperCourseScope(client, credentials, options, dependencies);
   const effectiveDays = options.days ?? DEFAULT_DUE_DAYS;
   const includeSubmitted = options.includeSubmitted ?? false;
-  const assignments = await collectDueAssignments(client, credentials, scope.courses, {
-    days: effectiveDays,
-    includeSubmitted
-  });
+  const assignments = await collectDueAssignments(
+    client,
+    credentials,
+    scope.courses,
+    {
+      days: effectiveDays,
+      includeSubmitted
+    },
+    dependencies
+  );
 
   return {
     scope: scope.mode,
@@ -646,10 +722,11 @@ export async function getDueAssignments(
 export async function getUnreadNotices(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  options: ResolveCourseScopeOptions = {}
+  options: ResolveCourseScopeOptions = {},
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<UnreadNoticesResult> {
-  const scope = await resolveHelperCourseScope(client, credentials, options);
-  const notices = await collectUnreadNotices(client, credentials, scope.courses);
+  const scope = await resolveHelperCourseScope(client, credentials, options, dependencies);
+  const notices = await collectUnreadNotices(client, credentials, scope.courses, dependencies);
 
   return {
     scope: scope.mode,
@@ -661,10 +738,16 @@ export async function getUnreadNotices(
 export async function getIncompleteOnlineWeeks(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  options: ResolveCourseScopeOptions = {}
+  options: ResolveCourseScopeOptions = {},
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<IncompleteOnlineWeeksResult> {
-  const scope = await resolveHelperCourseScope(client, credentials, options);
-  const weeks = await collectIncompleteOnlineWeeks(client, credentials, scope.courses);
+  const scope = await resolveHelperCourseScope(client, credentials, options, dependencies);
+  const weeks = await collectIncompleteOnlineWeeks(
+    client,
+    credentials,
+    scope.courses,
+    dependencies
+  );
 
   return {
     scope: scope.mode,
@@ -676,23 +759,38 @@ export async function getIncompleteOnlineWeeks(
 export async function getActionItems(
   client: MjuLmsSsoClient,
   credentials: ResolvedLmsCredentials,
-  options: ResolveCourseScopeOptions = {}
+  options: ResolveCourseScopeOptions = {},
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<ActionItemsResult> {
-  const scope = await resolveHelperCourseScope(client, credentials, options);
-  const unsubmittedAssignments = await collectUnsubmittedAssignments(
+  const scope = await resolveHelperCourseScope(client, credentials, options, dependencies);
+  const assignmentContexts = await loadAssignmentCourseContexts(
     client,
     credentials,
-    scope.courses
+    scope.courses,
+    dependencies
   );
-  const dueAssignments = await collectDueAssignments(client, credentials, scope.courses, {
-    days: DEFAULT_DUE_DAYS,
-    includeSubmitted: false
-  });
-  const unreadNotices = await collectUnreadNotices(client, credentials, scope.courses);
+  const unsubmittedAssignments = collectUnsubmittedAssignmentsFromContexts(assignmentContexts);
+  const dueAssignments = await collectDueAssignmentsFromContexts(
+    client,
+    credentials,
+    assignmentContexts,
+    {
+      days: DEFAULT_DUE_DAYS,
+      includeSubmitted: false
+    },
+    dependencies
+  );
+  const unreadNotices = await collectUnreadNotices(
+    client,
+    credentials,
+    scope.courses,
+    dependencies
+  );
   const incompleteOnlineWeeks = await collectIncompleteOnlineWeeks(
     client,
     credentials,
-    scope.courses
+    scope.courses,
+    dependencies
   );
 
   return {
@@ -719,13 +817,14 @@ export async function getCourseDigest(
     kjkey?: string;
     days?: number;
     limit?: number;
-  }
+  },
+  dependencies: LmsHelperDependencies = defaultHelperDependencies
 ): Promise<CourseDigestResult> {
   if (!options.course?.trim() && !options.kjkey?.trim()) {
     throw new Error("+digest 는 --course 또는 --kjkey 가 필요합니다.");
   }
 
-  const resolvedCourse = await resolveCourseReference(client, credentials, {
+  const resolvedCourse = await dependencies.resolveCourseReference(client, credentials, {
     ...(options.course ? { course: options.course } : {}),
     ...(options.kjkey ? { kjkey: options.kjkey } : {})
   });
@@ -740,31 +839,41 @@ export async function getCourseDigest(
   const digestDays = options.days ?? DEFAULT_DUE_DAYS;
   const digestLimit = options.limit ?? DEFAULT_DIGEST_LIMIT;
 
-  const assignmentsResult = await listCourseAssignments(client, {
+  const [assignmentContext] = await loadAssignmentCourseContexts(
+    client,
+    credentials,
+    [scopedCourse],
+    dependencies
+  );
+  const allUnreadNotices = await collectUnreadNotices(
+    client,
+    credentials,
+    [scopedCourse],
+    dependencies
+  );
+  const materialsResult = await dependencies.listCourseMaterials(client, {
     userId: credentials.userId,
     password: credentials.password,
     kjkey: scopedCourse.kjkey
   });
-  const allUnreadNotices = await collectUnreadNotices(client, credentials, [scopedCourse]);
-  const materialsResult = await listCourseMaterials(client, {
-    userId: credentials.userId,
-    password: credentials.password,
-    kjkey: scopedCourse.kjkey
-  });
-  const dueAssignments = await collectDueAssignments(client, credentials, [scopedCourse], {
-    days: digestDays,
-    includeSubmitted: false
-  });
+  const dueAssignments = await collectDueAssignmentsFromContexts(
+    client,
+    credentials,
+    assignmentContext ? [assignmentContext] : [],
+    {
+      days: digestDays,
+      includeSubmitted: false
+    },
+    dependencies
+  );
   const incompleteOnlineWeeks = await collectIncompleteOnlineWeeks(client, credentials, [
     scopedCourse
-  ]);
-  const unsubmittedAssignments = assignmentsResult.assignments
-    .filter((assignment) => assignment.isSubmitted === false)
-    .map((assignment) =>
-      toAggregateAssignment(scopedCourse, assignment, assignmentsResult.courseTitle)
-    );
+  ], dependencies);
+  const unsubmittedAssignments = collectUnsubmittedAssignmentsFromContexts(
+    assignmentContext ? [assignmentContext] : []
+  );
   const courseTitle =
-    assignmentsResult.courseTitle ??
+    assignmentContext?.courseTitle ??
     materialsResult.courseTitle ??
     allUnreadNotices[0]?.courseTitle ??
     dueAssignments[0]?.courseTitle ??
